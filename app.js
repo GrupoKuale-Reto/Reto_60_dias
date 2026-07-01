@@ -5,8 +5,27 @@
 
 /* ─── Firebase config ─── */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs, onSnapshot }
-  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+import {
+    getFirestore,
+    doc,
+    getDoc,
+    setDoc,
+    updateDoc,
+    deleteDoc,
+    collection,
+    getDocs
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+import {
+    getAuth,
+    signInWithEmailAndPassword,
+    createUserWithEmailAndPassword,
+    sendPasswordResetEmail,
+    updateProfile,
+    signOut,
+    onAuthStateChanged
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyA611-DTiBzEVCWrgx3viz97SPi5_MeQnM",
@@ -18,7 +37,8 @@ const firebaseConfig = {
 };
 
 const firebaseApp = initializeApp(firebaseConfig);
-const db = getFirestore(firebaseApp);
+const auth        = getAuth(firebaseApp);
+const db          = getFirestore(firebaseApp);
 
 /* ─── Hábitos por defecto ─── */
 const DEFAULT_HABITS = [
@@ -42,7 +62,9 @@ const ADMIN_PASS  = "admin";
 
 /* ─── App state ─── */
 let HABITS      = [];
-let curUser     = null;
+let curUser = null;
+let currentUid = null;
+let currentEmail = null;
 let isAdmin     = false;
 let curTab      = "tracker";
 let curWeek     = 0;
@@ -50,7 +72,7 @@ let uData       = { data: {}, joinDate: "", password: "" };
 let adminChart1 = null;
 let adminChart2 = null;
 let _midnightTimer = null;
-let _pendingDelete = null;
+let _pendingDelete = null; // alias; se usa _pendingDeleteName en deleteUser()
 
 /* ══════════════════════════════════════
    FIREBASE HELPERS
@@ -76,21 +98,40 @@ async function saveHabits() {
 }
 
 /* ── Usuarios ── */
-async function getUser(uname) {
-  const snap = await getDoc(doc(db, "users", uname));
-  return snap.exists() ? snap.data() : null;
+async function getUser(uid){
+
+    const snap=await getDoc(
+        doc(db,"users",uid)
+    );
+
+    return snap.exists()?snap.data():null;
+
 }
 
-async function saveUser(uname, data) {
-  await setDoc(doc(db, "users", uname), data, { merge: true });
+async function saveUser(uid,data){
+
+    await setDoc(
+        doc(db,"users",uid),
+        data,
+        {merge:true}
+    );
+
 }
 
-async function deleteUserDoc(uname) {
-  await deleteDoc(doc(db, "users", uname));
-  // delete progress subcollection
-  const progSnap = await getDocs(collection(db, "users", uname, "progress"));
-  const dels = progSnap.docs.map(d => deleteDoc(d.ref));
-  await Promise.all(dels);
+async function deleteUserDoc(uid) {
+
+    await deleteDoc(
+        doc(db,"users",uid)
+    );
+
+    const progSnap = await getDocs(
+        collection(db,"users",uid,"progress")
+    );
+
+    await Promise.all(
+        progSnap.docs.map(d=>deleteDoc(d.ref))
+    );
+
 }
 
 async function getAllUserDocs() {
@@ -99,13 +140,26 @@ async function getAllUserDocs() {
 }
 
 /* ── Progreso ── */
-async function loadProgress(uname) {
-  const snap = await getDoc(doc(db, "users", uname, "progress", "data"));
-  return snap.exists() ? (snap.data().grid || {}) : {};
+async function loadProgress(uid) {
+    const snap = await getDoc(
+        doc(db, "users", uid, "progress", "data")
+    );
+
+    return snap.exists()
+        ? (snap.data().grid || {})
+        : {};
 }
 
-async function saveProgress(uname, grid, lastSaved) {
-  await setDoc(doc(db, "users", uname, "progress", "data"), { grid, lastSaved });
+async function saveProgress(uid, grid, lastSaved) {
+
+    await setDoc(
+        doc(db,"users",uid,"progress","data"),
+        {
+            grid,
+            lastSaved
+        }
+    );
+
 }
 
 /* ══════════════════════════════════════
@@ -122,76 +176,111 @@ function hideLoading() {
 /* ══════════════════════════════════════
    AUTH
 ══════════════════════════════════════ */
-async function doLogin() {
-  const u   = document.getElementById("au").value.trim();
-  const p   = document.getElementById("ap").value;
-  const err = document.getElementById("auth-err");
-
-  if (!u) { err.textContent = "Escribe tu nombre de usuario."; return; }
-  if (!p) { err.textContent = "Escribe tu contraseña."; return; }
-
-  showLoading("Verificando...");
-
-  try {
-    /* Admin */
-    if (u === ADMIN_USER) {
-      if (p === ADMIN_PASS) {
-        curUser = u; isAdmin = true;
-        err.textContent = "";
-        await launchMain();
-      } else {
-        hideLoading();
-        err.textContent = "Contraseña incorrecta.";
-      }
-      return;
-    }
-
-    /* Usuario normal */
-    const userData = await getUser(u);
-
-    if (userData) {
-      if (userData.password === p) {
-        curUser = u; isAdmin = false;
-        uData.joinDate  = userData.joinDate || "";
-        uData.password  = userData.password;
-        uData.lastSaved = userData.lastSaved || null;
-        uData.data      = await loadProgress(u);
-        err.textContent = "";
-        await launchMain();
-      } else {
-        hideLoading();
-        err.textContent = "Contraseña incorrecta. ¿La olvidaste? Usa la opción de abajo.";
-      }
-    } else {
-      /* primer acceso */
-      if (p.length < 4) { hideLoading(); err.textContent = "Elige una contraseña de al menos 4 caracteres."; return; }
-      const joinDate = new Date().toISOString().split("T")[0];
-      await saveUser(u, { password: p, joinDate });
-      curUser = u; isAdmin = false;
-      uData = { data: {}, joinDate, password: p, lastSaved: null };
-      err.textContent = "";
-      await launchMain();
-    }
-  } catch(e) {
-    hideLoading();
-    err.textContent = "Error de conexión. Verifica tu internet.";
-    console.error(e);
+/* ── Mapa de códigos de error de Firebase Auth ── */
+function authErrMsg(code) {
+  switch (code) {
+    case "auth/user-not-found":
+    case "auth/wrong-password":
+    case "auth/invalid-credential":  return "Correo o contraseña incorrectos.";
+    case "auth/invalid-email":        return "El correo no es válido.";
+    case "auth/email-already-in-use": return "Ese correo ya está registrado.";
+    case "auth/weak-password":        return "La contraseña debe tener al menos 6 caracteres.";
+    case "auth/too-many-requests":    return "Demasiados intentos. Intenta más tarde.";
+    case "auth/network-request-failed": return "Sin conexión. Revisa tu internet.";
+    default: return "Error de autenticación. Intenta de nuevo.";
   }
 }
 
-function doLogout() {
-  curUser = null; isAdmin = false; curTab = "tracker"; curWeek = 0;
-  uData = { data: {}, joinDate: "", password: "" };
+async function doLogin() {
+  const email    = document.getElementById("email").value.trim();
+  const password = document.getElementById("password").value;
+  const errEl    = document.getElementById("auth-err");
+  errEl.textContent = "";
+
+  if (!email)    { errEl.textContent = "Escribe tu correo."; return; }
+  if (!password) { errEl.textContent = "Escribe tu contraseña."; return; }
+
+  showLoading("Iniciando sesión...");
+  try {
+    await signInWithEmailAndPassword(auth, email, password);
+    // onAuthStateChanged se encarga del resto
+  } catch (e) {
+    hideLoading();
+    errEl.textContent = authErrMsg(e.code);
+  }
+}
+
+async function doRegister() {
+  const nombre   = document.getElementById("nombre") ? document.getElementById("nombre").value.trim() : "";
+  const email    = document.getElementById("email").value.trim();
+  const password = document.getElementById("password").value;
+  const errEl    = document.getElementById("auth-err");
+  errEl.textContent = "";
+
+  if (!nombre)         { errEl.textContent = "Escribe tu nombre."; return; }
+  if (!email)          { errEl.textContent = "Escribe tu correo."; return; }
+  if (password.length < 6) { errEl.textContent = "Mínimo 6 caracteres."; return; }
+
+  showLoading("Creando cuenta...");
+  try {
+    const cred = await createUserWithEmailAndPassword(auth, email, password);
+    await updateProfile(cred.user, { displayName: nombre });
+    await setDoc(doc(db, "users", cred.user.uid), {
+      nombre,
+      correo: email,
+      joinDate: new Date().toISOString().split("T")[0]
+    });
+    // onAuthStateChanged maneja el resto
+  } catch (e) {
+    hideLoading();
+    errEl.textContent = authErrMsg(e.code);
+  }
+}
+
+/* ── login/register alias para compatibilidad ── */
+async function login()    { await doLogin(); }
+async function register() { await doRegister();
+
+    await setDoc(
+        doc(db,"users",cred.user.uid),
+        {
+            nombre,
+            correo:email,
+            joinDate:new Date().toISOString().split("T")[0]
+        }
+    );
+
+}
+
+async function doLogout() {
   if (_midnightTimer) clearTimeout(_midnightTimer);
+  curUser = null; currentUid = null; currentEmail = null;
+  isAdmin = false; curTab = "tracker"; curWeek = 0;
+  uData = { data: {}, joinDate: "", password: "" };
+  try { await signOut(auth); } catch (e) { console.warn("signOut error:", e); }
   document.getElementById("auth-screen").style.display  = "flex";
   document.getElementById("main-screen").style.display  = "none";
-  document.getElementById("au").value = "";
-  document.getElementById("ap").value = "";
+  const emailEl = document.getElementById("email");
+  const passEl  = document.getElementById("password");
+  if (emailEl) emailEl.value = "";
+  if (passEl)  passEl.value  = "";
   document.getElementById("auth-err").textContent = "";
 }
 
 async function launchMain() {
   await loadHabits();
+
+  if (!isAdmin) {
+    // Cargar datos del usuario y su progreso desde Firestore
+    const userData = await getUser(currentUid);
+    if (userData) {
+      uData.joinDate  = userData.joinDate  || "";
+      uData.lastSaved = userData.lastSaved || null;
+    }
+    const grid = await loadProgress(currentUid);
+    uData.data = grid;
+  }
+
   hideLoading();
   document.getElementById("auth-screen").style.display = "none";
   document.getElementById("main-screen").style.display  = "block";
@@ -205,27 +294,27 @@ async function launchMain() {
 
 /* ─── Recover password ─── */
 async function doRecover() {
-  const u   = document.getElementById("rec-user").value.trim();
-  const p1  = document.getElementById("rec-pass").value;
-  const p2  = document.getElementById("rec-pass2").value;
-  const err = document.getElementById("recover-err");
+  // El input en el HTML es "rec-user" pero ahora se espera un correo
+  const emailInput = document.getElementById("rec-email") || document.getElementById("rec-user");
+  const email = emailInput ? emailInput.value.trim() : "";
+  const err   = document.getElementById("recover-err");
 
-  if (!u)            { err.textContent = "Escribe tu nombre de usuario."; return; }
-  if (p1.length < 4) { err.textContent = "Mínimo 4 caracteres."; return; }
-  if (p1 !== p2)     { err.textContent = "Las contraseñas no coinciden."; return; }
+  if (!email) { err.textContent = "Escribe tu correo electrónico."; return; }
 
   try {
-    const userData = await getUser(u);
-    if (!userData) { err.textContent = "No existe un usuario con ese nombre."; return; }
-    await saveUser(u, { password: p1 });
+    await sendPasswordResetEmail(auth, email);
     err.style.color = "var(--green)";
-    err.textContent = "✓ Contraseña actualizada.";
+    err.textContent = "✓ Correo de recuperación enviado. Revisa tu bandeja.";
     setTimeout(() => {
       document.getElementById("recover-modal").style.display = "none";
       err.textContent = ""; err.style.color = "";
-    }, 2000);
-  } catch {
-    err.textContent = "Error de conexión.";
+    }, 3000);
+  } catch (e) {
+    if (e.code === "auth/user-not-found" || e.code === "auth/invalid-email") {
+      err.textContent = "No hay cuenta registrada con ese correo.";
+    } else {
+      err.textContent = "Error al enviar correo. Intenta de nuevo.";
+    }
   }
 }
 
@@ -272,8 +361,18 @@ function cs(d, h) {
 async function autoSave() {
   const lastSaved = new Date().toISOString();
   uData.lastSaved = lastSaved;
-  await saveProgress(curUser, uData.data, lastSaved);
-  await saveUser(curUser, { lastSaved });
+  await saveProgress(
+      currentUid,
+      uData.data,
+      lastSaved
+  );
+
+  await saveUser(
+      currentUid,
+      {
+          lastSaved
+      }
+  );
 }
 
 /* ── Midnight auto-save ── */
@@ -603,9 +702,18 @@ async function renderAdmin() {
     const allUsers = (await getAllUserDocs()).filter(u => u.name !== ADMIN_USER);
 
     // Load progress for each user
-    const usersWithProgress = await Promise.all(allUsers.map(async u => {
-      const grid = await loadProgress(u.name);
-      return { ...u, data: grid };
+    const usersWithProgress = await Promise.all(
+    allUsers.map(async u => {
+
+        const grid = await loadProgress(u.name);
+
+        return {
+            ...u,
+            uid: u.name,
+            name: u.nombre,
+            data: grid
+        };
+
     }));
 
     if (usersWithProgress.length === 0) {
@@ -868,10 +976,13 @@ async function doEditPass() {
   if (p1.length < 4) { err.textContent = "Mínimo 4 caracteres."; return; }
   if (p1 !== p2)     { err.textContent = "Las contraseñas no coinciden."; return; }
   try {
-    await saveUser(uname, { password: p1 });
+    // Firebase Admin SDK es necesario para cambiar contraseñas de otros usuarios.
+    // Aquí guardamos la nota en Firestore para que el admin recuerde qué cambiar
+    // desde la consola de Firebase, o se puede integrar una Cloud Function.
+    await saveUser(uname, { passwordResetRequestedAt: new Date().toISOString() });
     err.style.color = "var(--green)";
-    err.textContent = "✓ Contraseña actualizada.";
-    setTimeout(() => { document.getElementById("edit-pass-modal").style.display = "none"; }, 1200);
+    err.textContent = "✓ Solicitud registrada. Cambia la contraseña desde Firebase Console.";
+    setTimeout(() => { document.getElementById("edit-pass-modal").style.display = "none"; }, 2000);
   } catch { err.textContent = "Error al guardar."; }
 }
 
@@ -1057,11 +1168,46 @@ function renderHabitos() {
 }
 
 /* ══════════════════════════════════════
+   FIREBASE AUTH STATE
+══════════════════════════════════════ */
+onAuthStateChanged(auth, async (firebaseUser) => {
+  if (firebaseUser) {
+    // Usuario autenticado
+    currentUid   = firebaseUser.uid;
+    currentEmail = firebaseUser.email;
+    curUser      = firebaseUser.displayName || firebaseUser.email;
+
+    // Detectar admin por correo (ajusta según tu proyecto)
+    const ADMIN_EMAIL = "admin@kuale.com"; 
+    isAdmin = (firebaseUser.email === ADMIN_EMAIL);
+
+    showLoading("Cargando...");
+    await launchMain();
+  } else {
+    // No hay sesión activa
+    currentUid = null; currentEmail = null; curUser = null; isAdmin = false;
+    uData = { data: {}, joinDate: "", password: "" };
+    hideLoading();
+    document.getElementById("auth-screen").style.display = "flex";
+    document.getElementById("main-screen").style.display = "none";
+  }
+});
+
+/* ══════════════════════════════════════
    INIT
 ══════════════════════════════════════ */
 document.getElementById("login-btn").addEventListener("click", doLogin);
-document.getElementById("au").addEventListener("keydown", e => { if (e.key === "Enter") document.getElementById("ap").focus(); });
-document.getElementById("ap").addEventListener("keydown", e => { if (e.key === "Enter") doLogin(); });
+
+// Soporte para campos con id "au"/"ap" (usuario/contraseña legacy) o "email"/"password"
+const auEl = document.getElementById("au");
+const apEl = document.getElementById("ap");
+if (auEl) auEl.addEventListener("keydown", e => { if (e.key === "Enter") (apEl || document.getElementById("password")).focus(); });
+if (apEl) apEl.addEventListener("keydown", e => { if (e.key === "Enter") doLogin(); });
+const emailEl2 = document.getElementById("email");
+const passEl2  = document.getElementById("password");
+if (emailEl2) emailEl2.addEventListener("keydown", e => { if (e.key === "Enter") (passEl2 || apEl)?.focus(); });
+if (passEl2)  passEl2.addEventListener("keydown",  e => { if (e.key === "Enter") doLogin(); });
+
 document.getElementById("logout-btn").addEventListener("click", doLogout);
 
 document.getElementById("close-modal").addEventListener("click", () => { document.getElementById("sum-modal").style.display = "none"; });
