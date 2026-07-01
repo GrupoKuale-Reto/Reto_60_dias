@@ -22,10 +22,17 @@
       <input id="password" type="password" placeholder="Tu contraseña">
       <button class="btn-green" id="login-btn">Entrar</button>
       <div class="auth-err" id="auth-err"></div>
-      <div class="auth-hint">
-        <i class="ti ti-info-circle" aria-hidden="true"></i>
-        Si es tu primera vez, escribe tu nombre y elige una contraseña. ¡Ya quedas registrado!
+
+      <!-- Registro -->
+      <div id="register-section" style="display:none;margin-top:1rem">
+        <label for="nombre">Nombre completo</label>
+        <input id="nombre" type="text" placeholder="Tu nombre completo" autocomplete="off">
+        <button class="btn-green" id="register-btn" style="margin-top:.75rem">Crear cuenta</button>
       </div>
+
+      <button class="btn-recover" id="toggle-register-btn" style="margin-top:.5rem">
+        <i class="ti ti-user-plus"></i> ¿Primera vez? Regístrate
+      </button>
       <button class="btn-recover" id="recover-btn">
         <i class="ti ti-lock-question" aria-hidden="true"></i> ¿Olvidaste tu contraseña?
       </button>

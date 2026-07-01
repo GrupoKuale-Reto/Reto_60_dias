@@ -1197,18 +1197,19 @@ onAuthStateChanged(auth, async (firebaseUser) => {
    INIT
 ══════════════════════════════════════ */
 document.getElementById("login-btn").addEventListener("click", doLogin);
-
-// Soporte para campos con id "au"/"ap" (usuario/contraseña legacy) o "email"/"password"
-const auEl = document.getElementById("au");
-const apEl = document.getElementById("ap");
-if (auEl) auEl.addEventListener("keydown", e => { if (e.key === "Enter") (apEl || document.getElementById("password")).focus(); });
-if (apEl) apEl.addEventListener("keydown", e => { if (e.key === "Enter") doLogin(); });
-const emailEl2 = document.getElementById("email");
-const passEl2  = document.getElementById("password");
-if (emailEl2) emailEl2.addEventListener("keydown", e => { if (e.key === "Enter") (passEl2 || apEl)?.focus(); });
-if (passEl2)  passEl2.addEventListener("keydown",  e => { if (e.key === "Enter") doLogin(); });
-
+document.getElementById("email").addEventListener("keydown", e => { if (e.key === "Enter") document.getElementById("password").focus(); });
+document.getElementById("password").addEventListener("keydown", e => { if (e.key === "Enter") doLogin(); });
 document.getElementById("logout-btn").addEventListener("click", doLogout);
+
+document.getElementById("toggle-register-btn").addEventListener("click", () => {
+  const s = document.getElementById("register-section");
+  const visible = s.style.display !== "none";
+  s.style.display = visible ? "none" : "block";
+  document.getElementById("toggle-register-btn").innerHTML = visible
+    ? '<i class="ti ti-user-plus"></i> ¿Primera vez? Regístrate'
+    : '<i class="ti ti-x"></i> Cancelar';
+});
+document.getElementById("register-btn").addEventListener("click", doRegister);
 
 document.getElementById("close-modal").addEventListener("click", () => { document.getElementById("sum-modal").style.display = "none"; });
 document.getElementById("sum-modal").addEventListener("click", function(e) { if (e.target === this) this.style.display = "none"; });
