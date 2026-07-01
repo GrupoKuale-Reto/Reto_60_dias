@@ -239,18 +239,7 @@ async function doRegister() {
 
 /* ── login/register alias para compatibilidad ── */
 async function login()    { await doLogin(); }
-async function register() { await doRegister();
-
-    await setDoc(
-        doc(db,"users",cred.user.uid),
-        {
-            nombre,
-            correo:email,
-            joinDate:new Date().toISOString().split("T")[0]
-        }
-    );
-
-}
+async function register() { await doRegister(); }
 
 async function doLogout() {
   if (_midnightTimer) clearTimeout(_midnightTimer);
@@ -699,22 +688,22 @@ async function renderAdmin() {
   pc.innerHTML = `<div class="empty-admin"><i class="ti ti-loader" style="font-size:2rem;display:block;margin-bottom:.75rem;opacity:.4;animation:spin 1s linear infinite"></i>Cargando datos...</div>`;
 
   try {
-    const allUsers = (await getAllUserDocs()).filter(u => u.name !== ADMIN_USER);
+    const ADMIN_EMAIL = "admin@kuale.com";
+    const allUsers = (await getAllUserDocs()).filter(u => u.correo !== ADMIN_EMAIL);
 
     // Load progress for each user
     const usersWithProgress = await Promise.all(
-    allUsers.map(async u => {
-
-        const grid = await loadProgress(u.name);
-
+      allUsers.map(async u => {
+        const uid  = u.name; // u.name = doc id = uid de Firebase Auth
+        const grid = await loadProgress(uid);
         return {
-            ...u,
-            uid: u.name,
-            name: u.nombre,
-            data: grid
+          ...u,
+          uid,
+          name: u.nombre || u.correo || uid, // nombre visible, con fallbacks
+          data: grid
         };
-
-    }));
+      })
+    );
 
     if (usersWithProgress.length === 0) {
       pc.innerHTML = `<div class="empty-admin">
