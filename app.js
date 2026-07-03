@@ -230,11 +230,7 @@ async function doRegister() {
       correo: email,
       joinDate: new Date().toISOString().split("T")[0]
     });
-    // Resetear UI de registro
-    document.getElementById("register-section").style.display = "none";
-    document.getElementById("login-btn").style.display = "block";
-    document.getElementById("toggle-register-btn").innerHTML = '<i class="ti ti-user-plus"></i> ¿Primera vez? Regístrate';
-    // onAuthStateChanged maneja el login automático
+    // onAuthStateChanged maneja el resto
   } catch (e) {
     hideLoading();
     errEl.textContent = authErrMsg(e.code);
@@ -743,7 +739,7 @@ async function renderAdmin() {
         <span class="top-medal" style="color:${mColors[i]}">${medals[i]}</span>
         <div class="top-avatar">${s.name.charAt(0).toUpperCase()}</div>
         <div class="top-info">
-          <button class="user-link top-name" data-uname="${s.name}">${s.name}</button>
+          <button class="user-link top-name" data-uid="${s.uid}">${s.name}</button>
           <div class="top-meta">${s.daysWithData} días · ${s.perfect} perfectos · racha ${s.streak}d</div>
         </div>
         <div class="top-right">
@@ -776,14 +772,14 @@ async function renderAdmin() {
       const statusCls = s.pct >= 70 ? "badge-green" : s.pct >= 40 ? "badge-gray" : "badge-red";
       const statusTxt = s.pct >= 70 ? "En buen camino" : s.pct >= 40 ? "En progreso" : "Necesita apoyo";
       html += `<tr>
-        <td><button class="user-link" data-uname="${s.name}">${s.name}</button></td>
+        <td><button class="user-link" data-uid="${s.uid}">${s.name}</button></td>
         <td>${s.joinDate}</td><td>${s.daysWithData} / 60</td>
         <td><div class="inline-bar"><div class="inline-bar-fill" style="width:${s.pct}%"></div></div>${s.pct}%</td>
         <td>${s.streak}d</td><td>${s.perfect}</td>
         <td><span class="badge ${statusCls}">${statusTxt}</span></td>
         <td class="td-actions">
-          <button class="btn-action btn-edit" data-uname="${s.name}"><i class="ti ti-lock"></i> Contraseña</button>
-          <button class="btn-action btn-delete" data-uname="${s.name}"><i class="ti ti-trash"></i></button>
+          <button class="btn-action btn-edit" data-uid="${s.uid}"><i class="ti ti-lock"></i> Contraseña</button>
+          <button class="btn-action btn-delete" data-uid="${s.uid}"><i class="ti ti-trash"></i></button>
         </td></tr>`;
     });
     html += `</tbody></table></div></div>`;
@@ -808,12 +804,12 @@ async function renderAdmin() {
 
     pc.querySelectorAll(".user-link").forEach(btn => {
       btn.addEventListener("click", () => {
-        const s = stats.find(x => x.name === btn.dataset.uname);
+        const s = stats.find(x => x.uid === btn.dataset.uid);
         if (s) openUserDetail(s);
       });
     });
-    pc.querySelectorAll(".btn-edit").forEach(btn => btn.addEventListener("click", () => openEditPass(btn.dataset.uname)));
-    pc.querySelectorAll(".btn-delete").forEach(btn => btn.addEventListener("click", () => deleteUser(btn.dataset.uname)));
+    pc.querySelectorAll(".btn-edit").forEach(btn => btn.addEventListener("click", () => openEditPass(btn.dataset.uid)));
+    pc.querySelectorAll(".btn-delete").forEach(btn => btn.addEventListener("click", () => deleteUser(btn.dataset.uid)));
 
     document.getElementById("close-edit-pass").addEventListener("click", () => {
       document.getElementById("edit-pass-modal").style.display = "none";
@@ -945,9 +941,11 @@ function openUserDetail(s) {
 
 /* ── Delete user ── */
 let _pendingDeleteName = null;
-function deleteUser(uname) {
-  _pendingDeleteName = uname;
-  document.getElementById("confirm-uname").textContent = uname;
+function deleteUser(uid) {
+  _pendingDeleteName = uid;
+  const pc = document.getElementById("page-content");
+  const s  = pc._statsData ? pc._statsData.find(x => x.uid === uid) : null;
+  document.getElementById("confirm-uname").textContent = s ? s.name : uid;
   document.getElementById("confirm-modal").style.display = "flex";
 }
 
@@ -1195,11 +1193,9 @@ document.getElementById("password").addEventListener("keydown", e => { if (e.key
 document.getElementById("logout-btn").addEventListener("click", doLogout);
 
 document.getElementById("toggle-register-btn").addEventListener("click", () => {
-  const s        = document.getElementById("register-section");
-  const loginBtn = document.getElementById("login-btn");
-  const visible  = s.style.display !== "none";
-  s.style.display        = visible ? "none"  : "block";
-  loginBtn.style.display = visible ? "block" : "none";
+  const s = document.getElementById("register-section");
+  const visible = s.style.display !== "none";
+  s.style.display = visible ? "none" : "block";
   document.getElementById("toggle-register-btn").innerHTML = visible
     ? '<i class="ti ti-user-plus"></i> ¿Primera vez? Regístrate'
     : '<i class="ti ti-x"></i> Cancelar';
