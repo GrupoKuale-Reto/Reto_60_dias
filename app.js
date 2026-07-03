@@ -230,7 +230,11 @@ async function doRegister() {
       correo: email,
       joinDate: new Date().toISOString().split("T")[0]
     });
-    // onAuthStateChanged maneja el resto
+    // Resetear UI de registro
+    document.getElementById("register-section").style.display = "none";
+    document.getElementById("login-btn").style.display = "block";
+    document.getElementById("toggle-register-btn").innerHTML = '<i class="ti ti-user-plus"></i> ¿Primera vez? Regístrate';
+    // onAuthStateChanged maneja el login automático
   } catch (e) {
     hideLoading();
     errEl.textContent = authErrMsg(e.code);
@@ -1191,9 +1195,11 @@ document.getElementById("password").addEventListener("keydown", e => { if (e.key
 document.getElementById("logout-btn").addEventListener("click", doLogout);
 
 document.getElementById("toggle-register-btn").addEventListener("click", () => {
-  const s = document.getElementById("register-section");
-  const visible = s.style.display !== "none";
-  s.style.display = visible ? "none" : "block";
+  const s        = document.getElementById("register-section");
+  const loginBtn = document.getElementById("login-btn");
+  const visible  = s.style.display !== "none";
+  s.style.display        = visible ? "none"  : "block";
+  loginBtn.style.display = visible ? "block" : "none";
   document.getElementById("toggle-register-btn").innerHTML = visible
     ? '<i class="ti ti-user-plus"></i> ¿Primera vez? Regístrate'
     : '<i class="ti ti-x"></i> Cancelar';
