@@ -1189,7 +1189,8 @@ tr:hover td      { background: var(--gray-50); }
 .hab-table tr:hover td { background: var(--gray-50); }
 .hab-td-icon { text-align: center; font-size: 22px; width: 60px; }
 .hab-td-name { text-align: left; font-size: 13px; color: var(--gray-900); }
-.hab-td-actions { text-align: center; white-space: nowrap; display: flex; gap: 4px; align-items: center; justify-content: center; }
+.hab-td-actions { text-align: center; white-space: nowrap; vertical-align: middle; }
+.hab-td-actions .btn-action { margin: 0 2px; }
 .btn-hab-up, .btn-hab-down { width: 28px; height: 28px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
 .btn-hab-up:disabled, .btn-hab-down:disabled { opacity: .3; cursor: not-allowed; }
 .emoji-picker-wrap { margin-top: 6px; }
