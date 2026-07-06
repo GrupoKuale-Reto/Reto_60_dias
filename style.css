@@ -1289,3 +1289,102 @@ tr:hover td      { background: var(--gray-50); }
   cursor: pointer;
 }
 .card-link-btn:hover { opacity: .85; }
+/* ══════════════════════════════════════
+   GALERÍA DE FOTOS
+══════════════════════════════════════ */
+.galeria-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.galeria-card {
+  background: var(--white);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  transition: transform .15s, box-shadow .15s;
+}
+
+.galeria-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.galeria-img-wrap {
+  position: relative;
+  aspect-ratio: 1;
+  overflow: hidden;
+  background: var(--gray-100);
+}
+
+.galeria-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  cursor: pointer;
+  transition: transform .2s;
+}
+
+.galeria-img:hover { transform: scale(1.04); }
+
+.galeria-del-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(0,0,0,.55);
+  border: none;
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity .15s;
+}
+
+.galeria-img-wrap:hover .galeria-del-btn { opacity: 1; }
+
+.galeria-info {
+  padding: 8px 10px;
+}
+
+.galeria-habit {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gray-900);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.galeria-meta {
+  font-size: 11px;
+  color: var(--gray-400);
+  margin-top: 2px;
+}
+
+/* Photo drop zone */
+.photo-drop-zone {
+  position: relative;
+  border: 2px dashed var(--gray-200);
+  border-radius: var(--radius-lg);
+  padding: 2rem;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+
+.photo-drop-zone:hover {
+  border-color: var(--green);
+  background: var(--green-light);
+}
+
+@media (max-width: 700px) {
+  .galeria-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; }
+}

@@ -85,6 +85,8 @@ let HABITS            = [];
 let MINDFULNESS_CARDS = [];
 let PAUSA_CARDS       = [];
 let NOTIF_SCHEDULE    = [];
+let USER_PHOTOS       = {}; // { "day": [{url, thumb, date, habitName}] }
+const IMGBB_KEY = "45533b3f28084b0b3ac93329181fb6d9";
 let curUser = null;
 let currentUid = null;
 let currentEmail = null;
@@ -239,6 +241,34 @@ async function saveProgress(uid, grid, lastSaved) {
 
 }
 
+/* ── Fotos ── */
+async function loadPhotos(uid) {
+  try {
+    const snap = await getDoc(doc(db, "users", uid, "progress", "photos"));
+    USER_PHOTOS = snap.exists() ? (snap.data().photos || {}) : {};
+  } catch { USER_PHOTOS = {}; }
+}
+
+async function savePhotos(uid) {
+  await setDoc(doc(db, "users", uid, "progress", "photos"), { photos: USER_PHOTOS });
+}
+
+async function uploadToImgBB(file) {
+  const b64 = await new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result.split(",")[1]);
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+  const form = new FormData();
+  form.append("key", IMGBB_KEY);
+  form.append("image", b64);
+  const resp = await fetch("https://api.imgbb.com/1/upload", { method: "POST", body: form });
+  const data = await resp.json();
+  if (!data.success) throw new Error("imgBB error");
+  return { url: data.data.url, thumb: data.data.thumb?.url || data.data.url };
+}
+
 /* ══════════════════════════════════════
    LOADING SCREEN
 ══════════════════════════════════════ */
@@ -344,6 +374,7 @@ async function launchMain() {
   registerSW();
 
   if (!isAdmin) {
+    await loadPhotos(currentUid);
     // Cargar datos del usuario y su progreso desde Firestore
     const userData = await getUser(currentUid);
     if (userData) {
@@ -398,7 +429,7 @@ function buildTabs() {
   const nav  = document.getElementById("tab-nav");
   const tabs = isAdmin
     ? [{ id: "admin", label: "Panel admin" }, { id: "habitos", label: "Gestionar hábitos" }, { id: "notificaciones", label: "Notificaciones" }]
-    : [{ id: "tracker", label: "Mi reto" }];
+    : [{ id: "tracker", label: "Mi reto" }, { id: "galeria", label: "📷 Mi galería" }];
   nav.innerHTML = tabs.map(t =>
     `<button class="tab-btn" data-tab="${t.id}">${t.label}</button>`
   ).join("");
@@ -420,6 +451,7 @@ function renderTab(tab) {
   else if (tab === "admin")          renderAdmin();
   else if (tab === "habitos")        renderHabitos();
   else if (tab === "notificaciones") renderNotificaciones();
+  else if (tab === "galeria")        renderGaleria();
 }
 
 /* ══════════════════════════════════════
@@ -855,9 +887,17 @@ function renderTracker() {
 
   document.querySelectorAll(".check-btn[data-d]").forEach(btn => {
     btn.addEventListener("click", async function () {
-      cs(parseInt(this.dataset.d), parseInt(this.dataset.h));
+      const d = parseInt(this.dataset.d);
+      const h = parseInt(this.dataset.h);
+      const prevState = gs(d, h);
+      cs(d, h);
+      const newState = gs(d, h);
       renderTracker();
       await autoSave();
+      // Preguntar foto solo al marcar como cumplido (estado 1)
+      if (newState === 1 && prevState !== 1) {
+        setTimeout(() => askPhotoForDay(d, HABITS[h]?.name || "Hábito"), 300);
+      }
     });
   });
 
@@ -936,13 +976,16 @@ async function renderAdmin() {
     // Load progress for each user
     const usersWithProgress = await Promise.all(
       allUsers.map(async u => {
-        const uid  = u.name; // u.name = doc id = uid de Firebase Auth
-        const grid = await loadProgress(uid);
+        const uid   = u.name; // u.name = doc id = uid de Firebase Auth
+        const grid  = await loadProgress(uid);
+        const pSnap = await getDoc(doc(db, "users", uid, "progress", "photos")).catch(() => null);
+        const photos = pSnap && pSnap.exists() ? (pSnap.data().photos || {}) : {};
         return {
           ...u,
           uid,
-          name: u.nombre || u.correo || uid, // nombre visible, con fallbacks
-          data: grid
+          name: u.nombre || u.correo || uid,
+          data: grid,
+          photos
         };
       })
     );
@@ -1173,10 +1216,40 @@ function openUserDetail(s) {
       <span class="wc-fail ud-leg-dot" style="margin-left:10px"></span>No cumplido
       <span class="wc-empty ud-leg-dot" style="margin-left:10px"></span>Sin marcar
     </div>
-    <div class="weeks-accordion">${weeksHtml}</div>`;
+    <div class="weeks-accordion">${weeksHtml}</div>
+
+    ${(() => {
+      const allPhotos = [];
+      Object.entries(s.photos || {}).forEach(([day, photos]) => {
+        photos.forEach(p => allPhotos.push({ ...p, day: parseInt(day) }));
+      });
+      allPhotos.sort((a, b) => b.ts - a.ts);
+      if (allPhotos.length === 0) return "";
+      return `<div style="margin-top:1.5rem">
+        <div style="font-size:13px;font-weight:600;margin-bottom:10px">
+          <i class="ti ti-photo" style="color:var(--green)"></i> Fotos del reto (${allPhotos.length})
+        </div>
+        <div class="galeria-grid">
+          ${allPhotos.map(p => `
+            <div class="galeria-card">
+              <div class="galeria-img-wrap">
+                <img src="${p.thumb}" alt="${p.habitName}" loading="lazy" class="galeria-img admin-photo"
+                  data-url="${p.url}" data-habit="${p.habitName}" data-day="${p.day}" data-date="${p.date}">
+              </div>
+              <div class="galeria-info">
+                <div class="galeria-habit">${p.habitName}</div>
+                <div class="galeria-meta">Día ${p.day + 1} · ${p.date}</div>
+              </div>
+            </div>`).join("")}
+        </div>
+      </div>`;
+    })()}`;
 
   document.querySelectorAll(".week-acc-header").forEach(btn => {
     btn.addEventListener("click", () => btn.closest(".week-accordion").classList.toggle("open"));
+  });
+  document.querySelectorAll(".admin-photo").forEach(img => {
+    img.addEventListener("click", () => openLightbox(img.dataset.url, img.dataset.habit, parseInt(img.dataset.day), img.dataset.date));
   });
   document.getElementById("user-detail-modal").style.display = "flex";
 }
@@ -1610,6 +1683,212 @@ function renderHabitosInContainer(containerId) {
     showToast("✓ Hábitos restaurados");
     renderHabitosInContainer(containerId);
   });
+}
+
+/* ══════════════════════════════════════
+   FOTOS & GALERÍA
+══════════════════════════════════════ */
+function askPhotoForDay(day, habitName) {
+  // Crear modal de pregunta
+  const existing = document.getElementById("photo-ask-modal");
+  if (existing) existing.remove();
+
+  const modal = document.createElement("div");
+  modal.id = "photo-ask-modal";
+  modal.className = "modal-bg";
+  modal.style.display = "flex";
+  modal.innerHTML = `
+    <div class="modal-box" style="max-width:340px;text-align:center">
+      <div style="font-size:32px;margin-bottom:12px">📷</div>
+      <h2 style="font-size:16px;font-weight:600;margin-bottom:8px">¡Hábito cumplido!</h2>
+      <p style="font-size:13px;color:var(--gray-600);margin-bottom:1.5rem">
+        ¿Quieres agregar una foto para recordar este momento?<br>
+        <span style="font-size:11px;color:var(--gray-400)">${habitName} · Día ${day + 1}</span>
+      </p>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <button id="photo-yes" class="btn-green" style="margin-top:0">
+          <i class="ti ti-camera"></i> Sí, agregar foto
+        </button>
+        <button id="photo-no" style="height:38px;border:1px solid var(--gray-200);border-radius:var(--radius-md);background:transparent;color:var(--gray-600);font-size:13px;cursor:pointer">
+          No, gracias
+        </button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(modal);
+
+  document.getElementById("photo-no").addEventListener("click", () => modal.remove());
+  modal.addEventListener("click", e => { if (e.target === modal) modal.remove(); });
+  document.getElementById("photo-yes").addEventListener("click", () => {
+    modal.remove();
+    openPhotoUpload(day, habitName);
+  });
+}
+
+function openPhotoUpload(day, habitName) {
+  const existing = document.getElementById("photo-upload-modal");
+  if (existing) existing.remove();
+
+  const modal = document.createElement("div");
+  modal.id = "photo-upload-modal";
+  modal.className = "modal-bg";
+  modal.style.display = "flex";
+  modal.innerHTML = `
+    <div class="modal-box" style="max-width:400px">
+      <div class="modal-hdr">
+        <h2>Agregar foto</h2>
+        <button id="close-photo-upload"><i class="ti ti-x"></i></button>
+      </div>
+      <p style="font-size:12px;color:var(--gray-400);margin-bottom:1rem">${habitName} · Día ${day + 1}</p>
+
+      <div class="photo-drop-zone" id="photo-drop-zone">
+        <i class="ti ti-photo" style="font-size:2rem;color:var(--gray-400);display:block;margin-bottom:8px"></i>
+        <div style="font-size:13px;font-weight:600;color:var(--gray-600)">Toca para seleccionar</div>
+        <div style="font-size:11px;color:var(--gray-400);margin-top:4px">Galería o cámara</div>
+        <input type="file" id="photo-file-input" accept="image/*" capture="environment"
+          style="position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%">
+      </div>
+
+      <div id="photo-preview-wrap" style="display:none;margin-top:1rem;text-align:center">
+        <img id="photo-preview-img" style="max-width:100%;max-height:200px;border-radius:var(--radius-md);object-fit:cover">
+      </div>
+
+      <div id="photo-upload-err" class="auth-err" style="min-height:18px;margin-top:8px"></div>
+
+      <button id="do-upload-photo" class="btn-green" style="margin-top:1rem;display:none">
+        <i class="ti ti-upload"></i> Subir foto
+      </button>
+    </div>`;
+
+  document.body.appendChild(modal);
+
+  document.getElementById("close-photo-upload").addEventListener("click", () => modal.remove());
+  modal.addEventListener("click", e => { if (e.target === modal) modal.remove(); });
+
+  let selectedFile = null;
+
+  document.getElementById("photo-file-input").addEventListener("change", e => {
+    selectedFile = e.target.files[0];
+    if (!selectedFile) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      document.getElementById("photo-preview-img").src = ev.target.result;
+      document.getElementById("photo-preview-wrap").style.display = "block";
+      document.getElementById("do-upload-photo").style.display = "block";
+    };
+    reader.readAsDataURL(selectedFile);
+  });
+
+  document.getElementById("do-upload-photo").addEventListener("click", async () => {
+    if (!selectedFile) return;
+    const btn = document.getElementById("do-upload-photo");
+    const err = document.getElementById("photo-upload-err");
+    btn.disabled = true;
+    btn.textContent = "Subiendo...";
+    err.textContent = "";
+    try {
+      const { url, thumb } = await uploadToImgBB(selectedFile);
+      const dayKey = String(day);
+      if (!USER_PHOTOS[dayKey]) USER_PHOTOS[dayKey] = [];
+      USER_PHOTOS[dayKey].push({
+        url, thumb,
+        habitName,
+        date: new Date().toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric" }),
+        ts: Date.now()
+      });
+      await savePhotos(currentUid);
+      modal.remove();
+      showToast("✓ Foto guardada en tu galería");
+    } catch(e) {
+      err.textContent = "Error al subir la foto. Intenta de nuevo.";
+      btn.disabled = false;
+      btn.innerHTML = '<i class="ti ti-upload"></i> Subir foto';
+    }
+  });
+}
+
+function renderGaleria() {
+  const pc = document.getElementById("page-content");
+  const allPhotos = [];
+
+  Object.entries(USER_PHOTOS).forEach(([day, photos]) => {
+    photos.forEach(p => allPhotos.push({ ...p, day: parseInt(day) }));
+  });
+
+  allPhotos.sort((a, b) => b.ts - a.ts);
+
+  if (allPhotos.length === 0) {
+    pc.innerHTML = `
+      <div style="text-align:center;padding:4rem 1rem">
+        <div style="font-size:4rem;margin-bottom:1rem">📷</div>
+        <div style="font-size:16px;font-weight:600;color:var(--gray-900);margin-bottom:8px">Tu galería está vacía</div>
+        <div style="font-size:13px;color:var(--gray-400)">Cuando marques un hábito como cumplido puedes agregar fotos para recordar el momento.</div>
+      </div>`;
+    return;
+  }
+
+  pc.innerHTML = `
+    <div style="margin-bottom:1.25rem">
+      <div style="font-size:17px;font-weight:600;color:var(--gray-900);margin-bottom:4px">
+        <i class="ti ti-photo" style="color:var(--green);margin-right:6px"></i>Mi galería
+      </div>
+      <p style="font-size:13px;color:var(--gray-400)">${allPhotos.length} foto${allPhotos.length !== 1 ? "s" : ""} guardada${allPhotos.length !== 1 ? "s" : ""}</p>
+    </div>
+    <div class="galeria-grid">
+      ${allPhotos.map((p, i) => `
+        <div class="galeria-card" data-i="${i}">
+          <div class="galeria-img-wrap">
+            <img src="${p.thumb}" alt="${p.habitName}" loading="lazy" class="galeria-img">
+            <button class="galeria-del-btn" data-day="${p.day}" data-ts="${p.ts}" title="Eliminar">
+              <i class="ti ti-trash"></i>
+            </button>
+          </div>
+          <div class="galeria-info">
+            <div class="galeria-habit">${p.habitName}</div>
+            <div class="galeria-meta">Día ${p.day + 1} · ${p.date}</div>
+          </div>
+        </div>`).join("")}
+    </div>`;
+
+  // Lightbox al hacer clic
+  pc.querySelectorAll(".galeria-img").forEach((img, i) => {
+    img.addEventListener("click", () => openLightbox(allPhotos[i].url, allPhotos[i].habitName, allPhotos[i].day, allPhotos[i].date));
+  });
+
+  // Eliminar foto
+  pc.querySelectorAll(".galeria-del-btn").forEach(btn => {
+    btn.addEventListener("click", async e => {
+      e.stopPropagation();
+      const day = String(btn.dataset.day);
+      const ts  = parseInt(btn.dataset.ts);
+      if (!confirm("¿Eliminar esta foto?")) return;
+      USER_PHOTOS[day] = (USER_PHOTOS[day] || []).filter(p => p.ts !== ts);
+      if (USER_PHOTOS[day].length === 0) delete USER_PHOTOS[day];
+      await savePhotos(currentUid);
+      showToast("Foto eliminada");
+      renderGaleria();
+    });
+  });
+}
+
+function openLightbox(url, habitName, day, date) {
+  const existing = document.getElementById("lightbox-modal");
+  if (existing) existing.remove();
+  const modal = document.createElement("div");
+  modal.id = "lightbox-modal";
+  modal.className = "modal-bg";
+  modal.style.display = "flex";
+  modal.style.background = "rgba(0,0,0,.85)";
+  modal.innerHTML = `
+    <div style="max-width:90vw;max-height:90vh;position:relative;text-align:center">
+      <img src="${url}" style="max-width:90vw;max-height:75vh;border-radius:var(--radius-lg);object-fit:contain">
+      <div style="color:#fff;margin-top:12px;font-size:14px;font-weight:600">${habitName}</div>
+      <div style="color:rgba(255,255,255,.6);font-size:12px;margin-top:4px">Día ${day + 1} · ${date}</div>
+      <button id="close-lightbox" style="position:absolute;top:-16px;right:-16px;width:32px;height:32px;border-radius:50%;background:#fff;border:none;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center">✕</button>
+    </div>`;
+  document.body.appendChild(modal);
+  document.getElementById("close-lightbox").addEventListener("click", () => modal.remove());
+  modal.addEventListener("click", e => { if (e.target === modal) modal.remove(); });
 }
 
 /* ══════════════════════════════════════
