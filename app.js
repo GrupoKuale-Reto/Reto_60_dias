@@ -84,6 +84,7 @@ const ADMIN_PASS  = "admin";
 let HABITS            = [];
 let MINDFULNESS_CARDS = [];
 let PAUSA_CARDS       = [];
+let NOTIF_SCHEDULE    = [];
 let curUser = null;
 let currentUid = null;
 let currentEmail = null;
@@ -148,6 +149,29 @@ async function saveMindfulness() {
 
 async function savePausa() {
   await setDoc(doc(db, "config", "pausaActiva"), { list: PAUSA_CARDS });
+}
+
+/* ── Notificaciones ── */
+const DEFAULT_NOTIF = [
+  { id: 1, activa: true,  hora: "08:00", titulo: "⏰ Reto 60 días · Kuale", mensaje: "¡Buenos días! Recuerda registrar tus hábitos de hoy." },
+  { id: 2, activa: false, hora: "13:00", titulo: "⏰ Reto 60 días · Kuale", mensaje: "A mitad del día, ¿cómo van tus hábitos?" },
+  { id: 3, activa: false, hora: "20:00", titulo: "⏰ Reto 60 días · Kuale", mensaje: "¡Último aviso! No olvides registrar tus hábitos antes de dormir." },
+];
+
+async function loadNotifSchedule() {
+  try {
+    const snap = await getDoc(doc(db, "config", "notificaciones"));
+    if (snap.exists() && snap.data().list) {
+      NOTIF_SCHEDULE = snap.data().list;
+    } else {
+      NOTIF_SCHEDULE = DEFAULT_NOTIF.map(n => ({ ...n }));
+      await setDoc(doc(db, "config", "notificaciones"), { list: NOTIF_SCHEDULE });
+    }
+  } catch { NOTIF_SCHEDULE = DEFAULT_NOTIF.map(n => ({ ...n })); }
+}
+
+async function saveNotifSchedule() {
+  await setDoc(doc(db, "config", "notificaciones"), { list: NOTIF_SCHEDULE });
 }
 
 /* ── Usuarios ── */
@@ -316,6 +340,8 @@ async function doLogout() {
 async function launchMain() {
   await loadHabits();
   await loadCards();
+  await loadNotifSchedule();
+  registerSW();
 
   if (!isAdmin) {
     // Cargar datos del usuario y su progreso desde Firestore
@@ -371,7 +397,7 @@ async function doRecover() {
 function buildTabs() {
   const nav  = document.getElementById("tab-nav");
   const tabs = isAdmin
-    ? [{ id: "admin", label: "Panel admin" }, { id: "habitos", label: "Gestionar hábitos" }]
+    ? [{ id: "admin", label: "Panel admin" }, { id: "habitos", label: "Gestionar hábitos" }, { id: "notificaciones", label: "Notificaciones" }]
     : [{ id: "tracker", label: "Mi reto" }];
   nav.innerHTML = tabs.map(t =>
     `<button class="tab-btn" data-tab="${t.id}">${t.label}</button>`
@@ -390,9 +416,10 @@ function setActiveTab(tab) {
 function renderTab(tab) {
   curTab = tab;
   setActiveTab(tab);
-  if      (tab === "tracker") renderTracker();
-  else if (tab === "admin")   renderAdmin();
-  else if (tab === "habitos") renderHabitos();
+  if      (tab === "tracker")       renderTracker();
+  else if (tab === "admin")          renderAdmin();
+  else if (tab === "habitos")        renderHabitos();
+  else if (tab === "notificaciones") renderNotificaciones();
 }
 
 /* ══════════════════════════════════════
@@ -438,33 +465,14 @@ function scheduleMidnightSave() {
   }, next - now);
 }
 
-/* ── Web Notifications ── */
-function requestNotification() {
-  if (!("Notification" in window)) { alert("Tu navegador no soporta notificaciones."); return; }
-  if (Notification.permission === "granted") {
-    scheduleReminderNotification(); updateNotifyBtn();
-    showToast("✓ Recordatorio activado para las 8:00 PM");
-  } else if (Notification.permission !== "denied") {
-    Notification.requestPermission().then(perm => {
-      if (perm === "granted") { scheduleReminderNotification(); updateNotifyBtn(); showToast("✓ Recordatorio activado"); }
-    });
-  } else {
-    showToast("Notificaciones bloqueadas en la configuración del navegador.");
+/* ── Web Notifications (legacy btn en tracker) ── */
+async function requestNotification() {
+  const granted = await requestNotifPermission();
+  if (granted) {
+    sendScheduleToSW();
+    updateNotifyBtn();
+    showToast("✓ Notificaciones activadas");
   }
-}
-
-function scheduleReminderNotification() {
-  const now = new Date(), next = new Date(now);
-  next.setHours(20, 0, 0, 0);
-  if (next <= now) next.setDate(next.getDate() + 1);
-  setTimeout(() => {
-    sendReminderNotification("⏰ Reto 60 días · Kuale", "¡No olvides registrar tus hábitos de hoy!");
-    scheduleReminderNotification();
-  }, next - now);
-}
-
-function sendReminderNotification(title, body) {
-  if (Notification.permission === "granted") new Notification(title, { body, icon: "logo-icon-new.png" });
 }
 
 function updateNotifyBtn() {
@@ -472,7 +480,117 @@ function updateNotifyBtn() {
   if (!btn) return;
   const granted = "Notification" in window && Notification.permission === "granted";
   btn.classList.toggle("notify-active", granted);
-  btn.title = granted ? "Recordatorio activado" : "Activar recordatorio a las 8:00 PM";
+  btn.title = granted ? "Notificaciones activadas" : "Activar notificaciones";
+}
+
+/* ══════════════════════════════════════
+   NOTIFICACIONES (admin)
+══════════════════════════════════════ */
+function renderNotificaciones() {
+  const pc = document.getElementById("page-content");
+
+  function notifCard(n, i) {
+    return `<div class="notif-card ${n.activa ? "notif-card-active" : ""}">
+      <div class="notif-card-header">
+        <div style="display:flex;align-items:center;gap:10px">
+          <label class="notif-toggle">
+            <input type="checkbox" class="notif-check" data-i="${i}" ${n.activa ? "checked" : ""}>
+            <span class="notif-slider"></span>
+          </label>
+          <div>
+            <div style="font-weight:700;font-size:14px">Recordatorio ${i + 1}</div>
+            <div style="font-size:12px;color:var(--gray-400)">
+              ${n.activa ? "Activo" : "Inactivo"}
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <input type="time" class="notif-time" data-i="${i}" value="${n.hora}"
+            style="border:1px solid var(--gray-200);border-radius:var(--radius-md);padding:6px 10px;font-size:14px;font-weight:600;color:var(--gray-900)">
+        </div>
+      </div>
+      <div style="margin-top:12px">
+        <label style="font-size:12px;font-weight:600;color:var(--gray-600);display:block;margin-bottom:4px">Título</label>
+        <input type="text" class="notif-titulo" data-i="${i}" value="${n.titulo}"
+          maxlength="60" style="width:100%;border:1px solid var(--gray-200);border-radius:var(--radius-md);padding:8px 12px;font-size:13px">
+        <label style="font-size:12px;font-weight:600;color:var(--gray-600);display:block;margin-top:10px;margin-bottom:4px">Mensaje</label>
+        <input type="text" class="notif-mensaje" data-i="${i}" value="${n.mensaje}"
+          maxlength="120" style="width:100%;border:1px solid var(--gray-200);border-radius:var(--radius-md);padding:8px 12px;font-size:13px">
+      </div>
+    </div>`;
+  }
+
+  const permGranted = "Notification" in window && Notification.permission === "granted";
+  const permBanner = permGranted ? "" : `
+    <div class="notif-perm-banner">
+      <i class="ti ti-bell-off" style="font-size:20px;color:var(--red)"></i>
+      <div>
+        <div style="font-weight:600;font-size:13px">Las notificaciones no están activadas</div>
+        <div style="font-size:12px;color:var(--gray-600)">Los usuarios deben activarlas desde la app. Tú también puedes activarlas aquí.</div>
+      </div>
+      <button class="btn-summary" id="btn-grant-notif" style="height:36px;flex-shrink:0"><i class="ti ti-bell"></i> Activar</button>
+    </div>`;
+
+  pc.innerHTML = `
+    <div class="notif-manager">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;flex-wrap:wrap;gap:12px">
+        <div>
+          <div class="chart-title" style="margin-bottom:4px">
+            <i class="ti ti-bell" style="color:var(--green);margin-right:6px"></i>Configurar notificaciones
+          </div>
+          <p style="font-size:12px;color:var(--gray-400)">Los horarios configurados aquí se aplican para todos los usuarios.</p>
+        </div>
+        <button class="btn-green" id="btn-save-notif" style="height:38px"><i class="ti ti-device-floppy"></i> Guardar cambios</button>
+      </div>
+
+      ${permBanner}
+
+      <div style="display:flex;flex-direction:column;gap:16px">
+        ${NOTIF_SCHEDULE.map((n, i) => notifCard(n, i)).join("")}
+      </div>
+
+      <div style="margin-top:1.5rem;padding:1rem;background:var(--gray-50);border-radius:var(--radius-md);border:1px solid var(--gray-200)">
+        <div style="font-weight:600;font-size:13px;margin-bottom:8px"><i class="ti ti-info-circle" style="color:var(--green)"></i> ¿Cómo funcionan?</div>
+        <ul style="font-size:12px;color:var(--gray-600);padding-left:16px;margin:0;line-height:1.8">
+          <li>Los usuarios deben abrir la app al menos una vez y aceptar las notificaciones.</li>
+          <li>Una vez activadas, llegan aunque el navegador esté cerrado (excepto iOS Safari sin instalar).</li>
+          <li>En iPhone/iPad con Safari: el usuario debe instalar la app en la pantalla de inicio.</li>
+          <li>Los cambios en horarios se aplican la próxima vez que el usuario abra la app.</li>
+        </ul>
+      </div>
+    </div>`;
+
+  // Guardar
+  document.getElementById("btn-save-notif").addEventListener("click", async () => {
+    pc.querySelectorAll(".notif-card").forEach((card, i) => {
+      NOTIF_SCHEDULE[i].activa  = card.querySelector(".notif-check").checked;
+      NOTIF_SCHEDULE[i].hora    = card.querySelector(".notif-time").value;
+      NOTIF_SCHEDULE[i].titulo  = card.querySelector(".notif-titulo").value.trim() || NOTIF_SCHEDULE[i].titulo;
+      NOTIF_SCHEDULE[i].mensaje = card.querySelector(".notif-mensaje").value.trim() || NOTIF_SCHEDULE[i].mensaje;
+    });
+    await saveNotifSchedule();
+    sendScheduleToSW();
+    showToast("✓ Notificaciones guardadas");
+    renderNotificaciones();
+  });
+
+  // Toggle visual
+  pc.querySelectorAll(".notif-check").forEach(chk => {
+    chk.addEventListener("change", () => {
+      chk.closest(".notif-card").classList.toggle("notif-card-active", chk.checked);
+      chk.closest(".notif-card").querySelector("div[style*='Activo']") &&
+        (chk.closest(".notif-card").querySelector("div[style*='Activo'], .notif-card-header div div:last-child").textContent = chk.checked ? "Activo" : "Inactivo");
+    });
+  });
+
+  // Activar notificaciones
+  const grantBtn = document.getElementById("btn-grant-notif");
+  if (grantBtn) {
+    grantBtn.addEventListener("click", async () => {
+      const granted = await requestNotifPermission();
+      if (granted) { showToast("✓ Notificaciones activadas"); renderNotificaciones(); }
+    });
+  }
 }
 
 /* ── Toast ── */
@@ -1437,6 +1555,63 @@ function renderHabitosInContainer(containerId) {
 }
 
 /* ══════════════════════════════════════
+   SERVICE WORKER & NOTIFICACIONES
+══════════════════════════════════════ */
+let swRegistration = null;
+
+async function registerSW() {
+  if (!("serviceWorker" in navigator)) return;
+  try {
+    swRegistration = await navigator.serviceWorker.register("sw.js");
+    // Esperar a que el SW esté activo
+    await navigator.serviceWorker.ready;
+    // Enviar horarios al SW
+    sendScheduleToSW();
+    // Mostrar banner iOS si aplica
+    checkIOSInstall();
+  } catch(e) { console.warn("SW registration failed:", e); }
+}
+
+function sendScheduleToSW() {
+  if (!swRegistration || !swRegistration.active) return;
+  if (Notification.permission !== "granted") return;
+  swRegistration.active.postMessage({
+    type: "SCHEDULE_NOTIFICATIONS",
+    notificaciones: NOTIF_SCHEDULE
+  });
+}
+
+function cancelSWNotifications() {
+  if (!swRegistration || !swRegistration.active) return;
+  swRegistration.active.postMessage({ type: "CANCEL_NOTIFICATIONS" });
+}
+
+async function requestNotifPermission() {
+  if (!("Notification" in window)) {
+    showToast("Tu navegador no soporta notificaciones.");
+    return false;
+  }
+  if (Notification.permission === "granted") return true;
+  if (Notification.permission === "denied") {
+    showToast("Notificaciones bloqueadas. Actívalas en la configuración del navegador.");
+    return false;
+  }
+  const perm = await Notification.requestPermission();
+  return perm === "granted";
+}
+
+/* ── iOS install banner ── */
+function checkIOSInstall() {
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const isInStandaloneMode = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone;
+  const dismissed = localStorage.getItem("ios-banner-dismissed");
+  if (isIOS && !isInStandaloneMode && !dismissed) {
+    const banner = document.getElementById("ios-install-banner");
+    if (banner) banner.style.display = "block";
+  }
+}
+
+/* ══════════════════════════════════════
    FIREBASE AUTH STATE
 ══════════════════════════════════════ */
 onAuthStateChanged(auth, async (firebaseUser) => {
@@ -1469,6 +1644,15 @@ document.getElementById("login-btn").addEventListener("click", doLogin);
 document.getElementById("email").addEventListener("keydown", e => { if (e.key === "Enter") document.getElementById("password").focus(); });
 document.getElementById("password").addEventListener("keydown", e => { if (e.key === "Enter") doLogin(); });
 document.getElementById("logout-btn").addEventListener("click", doLogout);
+
+// iOS install banner close
+const iosBannerClose = document.getElementById("ios-banner-close");
+if (iosBannerClose) {
+  iosBannerClose.addEventListener("click", () => {
+    document.getElementById("ios-install-banner").style.display = "none";
+    localStorage.setItem("ios-banner-dismissed", "1");
+  });
+}
 
 document.getElementById("toggle-register-btn").addEventListener("click", () => {
   const s        = document.getElementById("register-section");
