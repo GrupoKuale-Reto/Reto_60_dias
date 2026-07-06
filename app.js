@@ -1064,7 +1064,7 @@ function buildCardManagerSection(containerId, title, icon, cards, onSave) {
         <div style="font-size:12px;color:var(--gray-600);margin-top:2px">${c.desc}</div>
         ${c.link ? `<a href="${c.link}" target="_blank" style="font-size:11px;color:var(--green)"><i class="ti ti-link"></i> ${c.link}</a>` : ""}
       </td>
-      <td style="width:100px;text-align:center;white-space:nowrap">
+      <td style="width:100px;text-align:center;white-space:nowrap;vertical-align:middle">
         <button class="btn-action btn-edit-card" data-i="${i}" title="Editar"><i class="ti ti-pencil"></i></button>
         <button class="btn-action btn-delete-card" data-i="${i}" title="Eliminar"><i class="ti ti-trash"></i></button>
       </td>
