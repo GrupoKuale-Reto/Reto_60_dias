@@ -539,7 +539,7 @@ function renderNotificaciones() {
           </div>
           <p style="font-size:12px;color:var(--gray-400)">Los horarios configurados aquí se aplican para todos los usuarios.</p>
         </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <div style="display:flex;gap:8px;align-items:center">
           <button class="btn-summary" id="btn-add-notif" style="height:38px"><i class="ti ti-plus"></i> Agregar recordatorio</button>
           <button class="btn-green" id="btn-save-notif" style="height:38px"><i class="ti ti-device-floppy"></i> Guardar cambios</button>
         </div>
@@ -547,7 +547,7 @@ function renderNotificaciones() {
 
       ${permBanner}
 
-      <div id="notif-list" style="display:flex;flex-direction:column;gap:16px">
+      <div style="display:flex;flex-direction:column;gap:16px">
         ${NOTIF_SCHEDULE.map((n, i) => notifCard(n, i)).join("")}
       </div>
 
@@ -559,8 +559,6 @@ function renderNotificaciones() {
           <li>En iPhone/iPad con Safari: el usuario debe instalar la app en la pantalla de inicio.</li>
           <li>Los cambios en horarios se aplican la próxima vez que el usuario abra la app.</li>
         </ul>
-      </div>
-
       <!-- Add notif modal -->
       <div id="add-notif-modal" class="modal-bg" style="display:none">
         <div class="modal-box" style="max-width:420px">
@@ -578,10 +576,9 @@ function renderNotificaciones() {
       </div>
     </div>`;
 
-  /* Guardar — lee todos los campos en orden */
+  // Guardar
   document.getElementById("btn-save-notif").addEventListener("click", async () => {
-    pc.querySelectorAll(".notif-card").forEach((card, idx) => {
-      const i = parseInt(card.dataset.i);
+    pc.querySelectorAll(".notif-card").forEach((card, i) => {
       NOTIF_SCHEDULE[i].activa  = card.querySelector(".notif-check").checked;
       NOTIF_SCHEDULE[i].hora    = card.querySelector(".notif-time").value;
       NOTIF_SCHEDULE[i].titulo  = card.querySelector(".notif-titulo").value.trim() || NOTIF_SCHEDULE[i].titulo;
@@ -593,16 +590,16 @@ function renderNotificaciones() {
     renderNotificaciones();
   });
 
-  /* Toggle visual */
+  // Toggle visual
   pc.querySelectorAll(".notif-check").forEach(chk => {
     chk.addEventListener("change", () => {
-      const card = chk.closest(".notif-card");
-      card.classList.toggle("notif-card-active", chk.checked);
-      card.querySelector(".notif-status-lbl").textContent = chk.checked ? "Activo" : "Inactivo";
+      chk.closest(".notif-card").classList.toggle("notif-card-active", chk.checked);
+      const lbl = chk.closest(".notif-card").querySelector(".notif-status-lbl");
+      if (lbl) lbl.textContent = chk.checked ? "Activo" : "Inactivo";
     });
   });
 
-  /* Eliminar */
+  // Eliminar
   pc.querySelectorAll(".btn-del-notif").forEach(btn => {
     btn.addEventListener("click", async () => {
       const i = parseInt(btn.dataset.i);
@@ -615,7 +612,7 @@ function renderNotificaciones() {
     });
   });
 
-  /* Agregar modal */
+  // Agregar modal
   const addModal = document.getElementById("add-notif-modal");
   document.getElementById("btn-add-notif").addEventListener("click", () => {
     document.getElementById("new-notif-hora").value    = "09:00";
@@ -626,7 +623,6 @@ function renderNotificaciones() {
   });
   document.getElementById("close-add-notif").addEventListener("click", () => { addModal.style.display = "none"; });
   addModal.addEventListener("click", e => { if (e.target === addModal) addModal.style.display = "none"; });
-
   document.getElementById("do-add-notif").addEventListener("click", async () => {
     const hora    = document.getElementById("new-notif-hora").value;
     const titulo  = document.getElementById("new-notif-titulo").value.trim() || "⏰ Reto 60 días · Kuale";
@@ -642,7 +638,7 @@ function renderNotificaciones() {
     renderNotificaciones();
   });
 
-  /* Activar notificaciones */
+  // Activar notificaciones
   const grantBtn = document.getElementById("btn-grant-notif");
   if (grantBtn) {
     grantBtn.addEventListener("click", async () => {
@@ -651,6 +647,7 @@ function renderNotificaciones() {
     });
   }
 }
+
 /* ── Toast ── */
 function showToast(msg) {
   let t = document.getElementById("app-toast");
