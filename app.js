@@ -539,9 +539,9 @@ function renderNotificaciones() {
           </div>
           <p style="font-size:12px;color:var(--gray-400)">Los horarios configurados aquí se aplican para todos los usuarios.</p>
         </div>
-        <div style="display:flex;gap:8px;flex-shrink:0">
-          <button class="btn-summary" id="btn-add-notif" style="height:38px;white-space:nowrap"><i class="ti ti-plus"></i> Agregar recordatorio</button>
-          <button class="btn-green" id="btn-save-notif" style="height:38px;white-space:nowrap"><i class="ti ti-device-floppy"></i> Guardar cambios</button>
+        <div style="display:flex;gap:8px;flex-shrink:0;align-items:center">
+          <button class="btn-summary" id="btn-add-notif" style="height:38px;white-space:nowrap;padding:0 12px"><i class="ti ti-plus"></i> Agregar</button>
+          <button class="btn-green" id="btn-save-notif" style="height:38px;white-space:nowrap;width:auto;padding:0 12px;margin-top:0"><i class="ti ti-device-floppy"></i> Guardar</button>
         </div>
       </div>
 
