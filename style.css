@@ -1202,55 +1202,5 @@ tr:hover td      { background: var(--gray-50); }
   transition: background .15s, border-color .15s;
 }
 .emoji-opt:hover { background: var(--green-light); border-color: var(--green); }
-/* ── Ver más button ── */
-.btn-ver-mas {
-  background: transparent;
-  border: 1px solid var(--green);
-  color: var(--green);
-  border-radius: var(--radius-md);
-  padding: 8px 20px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  transition: background .15s;
-}
-.btn-ver-mas:hover { background: var(--green-light); }
-
-/* ── Card link button ── */
-.card-link-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  margin-top: 10px;
-  padding: 5px 12px;
-  background: var(--green);
-  color: #fff;
-  border-radius: var(--radius-md);
-  font-size: 12px;
-  font-weight: 600;
-  text-decoration: none;
-  transition: opacity .15s;
-}
-.card-link-btn:hover { opacity: .85; }
-
-/* ── Tab cards buttons in habitos admin ── */
-.tab-cards-btn {
-  border-radius: var(--radius-md);
-  border: 1px solid var(--gray-200);
-  padding: 0 16px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  transition: background .15s;
-}
-.tab-cards-btn.active {
-  background: var(--green) !important;
-  color: #fff !important;
-  border-color: var(--green);
-}
+/* Card manager table alignment */
+.hab-table td { vertical-align: middle; }
