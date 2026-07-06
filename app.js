@@ -998,7 +998,7 @@ async function renderAdmin() {
       return;
     }
 
-    const stats      = usersWithProgress.map(u => ({ ...u, ...getUserStats(u) }));
+    const stats      = usersWithProgress.map(u => ({ ...u, ...getUserStats(u), photos: u.photos || {} }));
     const avgPct     = Math.round(stats.reduce((a, s) => a + s.pct, 0) / stats.length);
     const avgDays    = Math.round(stats.reduce((a, s) => a + s.daysWithData, 0) / stats.length);
     const totalPerfect = stats.reduce((a, s) => a + s.perfect, 0);
