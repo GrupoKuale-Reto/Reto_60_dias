@@ -1696,7 +1696,7 @@ onAuthStateChanged(auth, async (firebaseUser) => {
 });
 
 /* ══════════════════════════════════════
-   INIT
+   INIT1
 ══════════════════════════════════════ */
 document.getElementById("login-btn").addEventListener("click", doLogin);
 document.getElementById("email").addEventListener("keydown", e => { if (e.key === "Enter") document.getElementById("password").focus(); });
