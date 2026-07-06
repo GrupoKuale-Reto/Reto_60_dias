@@ -54,6 +54,26 @@ const DEFAULT_HABITS = [
   { icon: "🙏", name: "Reconocer 1 logro del día" },
 ];
 
+/* ─── Cards por defecto ─── */
+const DEFAULT_MINDFULNESS = [
+  {icon:"🌬️",title:"Respiración 4-7-8",time:"5 min",desc:"Inhala 4 seg, retén 7, exhala 8. Repite 4 veces. Reduce el estrés de inmediato.",link:""},
+  {icon:"🧍",title:"Escaneo corporal",time:"5 min",desc:"Recorre tu cuerpo mentalmente de pies a cabeza. ¿Dónde hay tensión? Suéltala al exhalar.",link:""},
+  {icon:"👁️",title:"Los 5 sentidos",time:"3-5 min",desc:"5 cosas que ves, 4 que tocas, 3 que escuchas, 2 que hueles, 1 que saboreas.",link:""},
+  {icon:"🙏",title:"Minuto de gratitud",time:"2-5 min",desc:"Una cosa que salió bien hoy. Visualízala y deja que genere sensación positiva.",link:""},
+  {icon:"⬜",title:"Respiración cuadrada",time:"4-5 min",desc:"Inhala 4 → retén 4 → exhala 4 → retén 4. Repite 5 veces.",link:""},
+];
+
+const DEFAULT_PAUSA = [
+  {icon:"🔄",title:"Movilidad de cuello",time:"30 seg",desc:"Inclina la cabeza hacia adelante y atrás. Gira suavemente a ambos lados. Realiza movimientos lentos y controlados.",link:""},
+  {icon:"💪",title:"Rotación de hombros",time:"30 seg",desc:"Haz círculos hacia adelante durante 15 segundos. Haz círculos hacia atrás durante 15 segundos.",link:""},
+  {icon:"🙆",title:"Estiramiento de brazos y espalda",time:"30 seg",desc:"Extiende ambos brazos al frente. Entrelaza las manos y empuja suavemente hacia adelante. Mantén 15 segundos y repite elevando los brazos sobre la cabeza.",link:""},
+  {icon:"🏋️",title:"Sentadillas",time:"1 minuto",desc:"Realiza 10 a 15 sentadillas a ritmo moderado. Mantén la espalda recta y los pies separados al ancho de los hombros.",link:""},
+  {icon:"🚶",title:"Marcha en el lugar",time:"1 minuto",desc:"Eleva ligeramente las rodillas. Balancea los brazos de forma natural. Mantén un ritmo cómodo.",link:""},
+  {icon:"👟",title:"Elevación de talones",time:"30 seg",desc:"Ponte de pie. Eleva los talones y mantente en puntas por un segundo. Baja lentamente y repite.",link:""},
+  {icon:"🦵",title:"Estiramiento de piernas",time:"30 seg",desc:"Apoya una pierna al frente. Inclina ligeramente el cuerpo hacia adelante. Mantén 15 segundos por cada pierna.",link:""},
+  {icon:"🌬️",title:"Respiración profunda",time:"30 seg",desc:"Inhala por la nariz durante 4 segundos. Mantén el aire 2 segundos. Exhala lentamente por la boca durante 6 segundos.",link:""},
+];
+
 const DAYS        = 60;
 const WEEK_DAYS   = 7;
 const TOTAL_WEEKS = Math.ceil(DAYS / WEEK_DAYS);
@@ -61,7 +81,9 @@ const ADMIN_USER  = "admin";
 const ADMIN_PASS  = "admin";
 
 /* ─── App state ─── */
-let HABITS      = [];
+let HABITS            = [];
+let MINDFULNESS_CARDS = [];
+let PAUSA_CARDS       = [];
 let curUser = null;
 let currentUid = null;
 let currentEmail = null;
@@ -95,6 +117,37 @@ async function loadHabits() {
 
 async function saveHabits() {
   await setDoc(doc(db, "config", "habits"), { list: HABITS });
+}
+
+/* ── Cards de Mindfulness y Pausa Activa ── */
+async function loadCards() {
+  try {
+    const mSnap = await getDoc(doc(db, "config", "mindfulness"));
+    if (mSnap.exists() && mSnap.data().list) {
+      MINDFULNESS_CARDS = mSnap.data().list;
+    } else {
+      MINDFULNESS_CARDS = DEFAULT_MINDFULNESS.map(c => ({ ...c }));
+      await setDoc(doc(db, "config", "mindfulness"), { list: MINDFULNESS_CARDS });
+    }
+  } catch { MINDFULNESS_CARDS = DEFAULT_MINDFULNESS.map(c => ({ ...c })); }
+
+  try {
+    const pSnap = await getDoc(doc(db, "config", "pausaActiva"));
+    if (pSnap.exists() && pSnap.data().list) {
+      PAUSA_CARDS = pSnap.data().list;
+    } else {
+      PAUSA_CARDS = DEFAULT_PAUSA.map(c => ({ ...c }));
+      await setDoc(doc(db, "config", "pausaActiva"), { list: PAUSA_CARDS });
+    }
+  } catch { PAUSA_CARDS = DEFAULT_PAUSA.map(c => ({ ...c })); }
+}
+
+async function saveMindfulness() {
+  await setDoc(doc(db, "config", "mindfulness"), { list: MINDFULNESS_CARDS });
+}
+
+async function savePausa() {
+  await setDoc(doc(db, "config", "pausaActiva"), { list: PAUSA_CARDS });
 }
 
 /* ── Usuarios ── */
@@ -262,6 +315,7 @@ async function doLogout() {
 
 async function launchMain() {
   await loadHabits();
+  await loadCards();
 
   if (!isAdmin) {
     // Cargar datos del usuario y su progreso desde Firestore
@@ -548,66 +602,74 @@ function renderTracker() {
     </div>
   </div>`;
 
+  /* ── Mindfulness cards ── */
+  function buildCardHtml(c, idx) {
+    const linkBtn = c.link ? `<a href="${c.link}" target="_blank" rel="noopener" class="card-link-btn"><i class="ti ti-player-play"></i> Ver video</a>` : "";
+    return `<div class="m-card"><div class="m-card-header"><div class="m-card-icon">${c.icon}</div>
+      <div><div class="m-card-title">${c.title}</div><div class="m-card-time">${c.time}</div></div>
+      </div><p>${c.desc}</p>${linkBtn}</div>`;
+  }
+
+  const VISIBLE_CARDS = 3;
+
+  /* Mindfulness */
+  const mVisible = MINDFULNESS_CARDS.slice(0, VISIBLE_CARDS);
+  const mHidden  = MINDFULNESS_CARDS.slice(VISIBLE_CARDS);
   html += `<div class="mindfulness-section">
     <h2><i class="ti ti-brain"></i> Ejercicios de mindfulness (5 min)</h2>
     <p class="section-sub">Rota estos ejercicios cada día</p>
-    <div class="cards-grid">`;
-  [
-    {icon:"🌬️",title:"Respiración 4-7-8",time:"5 min",desc:"Inhala 4 seg, retén 7, exhala 8. Repite 4 veces. Reduce el estrés de inmediato."},
-    {icon:"🧍",title:"Escaneo corporal",time:"5 min",desc:"Recorre tu cuerpo mentalmente de pies a cabeza. ¿Dónde hay tensión? Suéltala al exhalar."},
-    {icon:"👁️",title:"Los 5 sentidos",time:"3-5 min",desc:"5 cosas que ves, 4 que tocas, 3 que escuchas, 2 que hueles, 1 que saboreas."},
-    {icon:"🙏",title:"Minuto de gratitud",time:"2-5 min",desc:"Una cosa que salió bien hoy. Visualízala y deja que genere sensación positiva."},
-    {icon:"⬜",title:"Respiración cuadrada",time:"4-5 min",desc:"Inhala 4 → retén 4 → exhala 4 → retén 4. Repite 5 veces."},
-  ].forEach(m => {
-    html += `<div class="m-card"><div class="m-card-header"><div class="m-card-icon">${m.icon}</div>
-      <div><div class="m-card-title">${m.title}</div><div class="m-card-time">${m.time}</div></div>
-      </div><p>${m.desc}</p></div>`;
-  });
-  html += `</div></div>`;
+    <div class="cards-grid" id="mind-grid">
+      ${mVisible.map((c,i) => buildCardHtml(c,i)).join("")}
+    </div>
+    ${mHidden.length > 0 ? `<div style="text-align:center;margin-top:1rem">
+      <button class="btn-ver-mas" id="btn-ver-mas-mind"><i class="ti ti-chevron-down"></i> Ver más (${mHidden.length})</button>
+    </div>` : ""}
+  </div>`;
 
-  /* ── Pausa Activa ── */
+  /* Pausa Activa */
+  const pVisible = PAUSA_CARDS.slice(0, VISIBLE_CARDS);
+  const pHidden  = PAUSA_CARDS.slice(VISIBLE_CARDS);
   html += `<div class="mindfulness-section">
     <h2><i class="ti ti-run"></i> Ejercicios de Pausa Activa</h2>
     <p class="section-sub">Realiza esta rutina de 6 minutos para activar tu cuerpo durante la jornada</p>
-    <div class="cards-grid">`;
-
-  [
-    { num:"1", icon:"🔄", title:"Movilidad de cuello", time:"30 seg",
-      steps:["Inclina la cabeza hacia adelante y atrás","Gira suavemente a ambos lados","Realiza movimientos lentos y controlados"] },
-    { num:"2", icon:"💪", title:"Rotación de hombros", time:"30 seg",
-      steps:["Haz círculos hacia adelante durante 15 segundos","Haz círculos hacia atrás durante 15 segundos"] },
-    { num:"3", icon:"🙆", title:"Estiramiento de brazos y espalda", time:"30 seg",
-      steps:["Extiende ambos brazos al frente","Entrelaza las manos y empuja suavemente hacia adelante","Mantén 15 segundos y repite elevando los brazos sobre la cabeza"] },
-    { num:"4", icon:"🏋️", title:"Sentadillas", time:"1 minuto",
-      steps:["Realiza 10 a 15 sentadillas a ritmo moderado","Mantén la espalda recta y los pies separados al ancho de los hombros"] },
-    { num:"5", icon:"🚶", title:"Marcha en el lugar", time:"1 minuto",
-      steps:["Eleva ligeramente las rodillas","Balancea los brazos de forma natural","Mantén un ritmo cómodo"] },
-    { num:"6", icon:"👟", title:"Elevación de talones", time:"30 seg",
-      steps:["Ponte de pie","Eleva los talones y mantente en puntas por un segundo","Baja lentamente y repite"] },
-    { num:"7", icon:"🦵", title:"Estiramiento de piernas", time:"30 seg",
-      steps:["Apoya una pierna al frente","Inclina ligeramente el cuerpo hacia adelante","Mantén 15 segundos por cada pierna"] },
-    { num:"8", icon:"🌬️", title:"Respiración profunda", time:"30 seg",
-      steps:["Inhala por la nariz durante 4 segundos","Mantén el aire 2 segundos","Exhala lentamente por la boca durante 6 segundos"] },
-  ].forEach(e => {
-    html += `<div class="m-card">
-      <div class="m-card-header">
-        <div class="m-card-icon" style="position:relative">
-          ${e.icon}
-          <span style="position:absolute;top:-5px;right:-5px;width:16px;height:16px;border-radius:50%;background:var(--green);color:#fff;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center">${e.num}</span>
-        </div>
-        <div><div class="m-card-title">${e.title}</div><div class="m-card-time">${e.time}</div></div>
-      </div>
-      <ul style="list-style:none;padding:0;margin:0">
-        ${e.steps.map(s => `<li style="font-size:12px;color:var(--gray-600);padding:3px 0;display:flex;gap:6px;align-items:flex-start">
-          <span style="color:var(--green);font-weight:700;flex-shrink:0">·</span>${s}
-        </li>`).join("")}
-      </ul>
-    </div>`;
-  });
-
-  html += `</div></div>`;
+    <div class="cards-grid" id="pausa-grid">
+      ${pVisible.map((c,i) => buildCardHtml(c,i)).join("")}
+    </div>
+    ${pHidden.length > 0 ? `<div style="text-align:center;margin-top:1rem">
+      <button class="btn-ver-mas" id="btn-ver-mas-pausa"><i class="ti ti-chevron-down"></i> Ver más (${pHidden.length})</button>
+    </div>` : ""}
+  </div>`;
 
   document.getElementById("page-content").innerHTML = html;
+
+  /* Ver más buttons */
+  function openCardsModal(title, cards) {
+    const existing = document.getElementById("cards-modal");
+    if (existing) existing.remove();
+    const modal = document.createElement("div");
+    modal.id = "cards-modal";
+    modal.className = "modal-bg";
+    modal.style.display = "flex";
+    modal.innerHTML = `<div class="modal-box" style="max-width:680px">
+      <div class="modal-hdr"><h2>${title}</h2><button id="close-cards-modal"><i class="ti ti-x"></i></button></div>
+      <div class="cards-grid" style="margin-top:1rem">
+        ${cards.map(c => {
+          const linkBtn = c.link ? `<a href="${c.link}" target="_blank" rel="noopener" class="card-link-btn"><i class="ti ti-player-play"></i> Ver video</a>` : "";
+          return `<div class="m-card"><div class="m-card-header"><div class="m-card-icon">${c.icon}</div>
+            <div><div class="m-card-title">${c.title}</div><div class="m-card-time">${c.time}</div></div>
+            </div><p>${c.desc}</p>${linkBtn}</div>`;
+        }).join("")}
+      </div>
+    </div>`;
+    document.body.appendChild(modal);
+    document.getElementById("close-cards-modal").addEventListener("click", () => modal.remove());
+    modal.addEventListener("click", e => { if (e.target === modal) modal.remove(); });
+  }
+
+  const btnMindMore = document.getElementById("btn-ver-mas-mind");
+  if (btnMindMore) btnMindMore.addEventListener("click", () => openCardsModal("Más ejercicios de mindfulness", MINDFULNESS_CARDS.slice(3)));
+  const btnPausaMore = document.getElementById("btn-ver-mas-pausa");
+  if (btnPausaMore) btnPausaMore.addEventListener("click", () => openCardsModal("Más ejercicios de Pausa Activa", PAUSA_CARDS.slice(3)));
 
   document.getElementById("prev-week").addEventListener("click", () => { if (curWeek > 0) { curWeek--; renderTracker(); } });
   document.getElementById("next-week").addEventListener("click", () => { if (curWeek < TOTAL_WEEKS - 1) { curWeek++; renderTracker(); } });
@@ -985,8 +1047,163 @@ async function doEditPass() {
    GESTIONAR HÁBITOS (admin)
 ══════════════════════════════════════ */
 function renderHabitos() {
-  const pc = document.getElementById("page-content");
+  renderHabitosCards();
+}
+/* ══════════════════════════════════════
+   GESTIONAR CARDS (admin)
+══════════════════════════════════════ */
+function buildCardManagerSection(containerId, title, icon, cards, onSave) {
+  const pc = document.getElementById(containerId);
 
+  function cardRow(c, i) {
+    return `<tr>
+      <td style="font-size:20px;text-align:center;width:50px">${c.icon}</td>
+      <td style="padding:8px 12px">
+        <div style="font-weight:600;font-size:13px">${c.title}</div>
+        <div style="font-size:11px;color:var(--gray-400)">${c.time}</div>
+        <div style="font-size:12px;color:var(--gray-600);margin-top:2px">${c.desc}</div>
+        ${c.link ? `<a href="${c.link}" target="_blank" style="font-size:11px;color:var(--green)"><i class="ti ti-link"></i> ${c.link}</a>` : ""}
+      </td>
+      <td style="width:80px;text-align:center">
+        <button class="btn-action btn-delete-card" data-i="${i}"><i class="ti ti-trash"></i></button>
+      </td>
+    </tr>`;
+  }
+
+  pc.innerHTML = `
+    <div class="hab-manager" style="margin-bottom:1.5rem">
+      <div class="hab-header">
+        <div>
+          <div class="chart-title" style="margin-bottom:4px">
+            <i class="${icon}" style="color:var(--green);margin-right:6px"></i>${title}
+          </div>
+          <p style="font-size:12px;color:var(--gray-400)">Los cambios se ven de inmediato para todos los usuarios.</p>
+        </div>
+        <button class="btn-summary btn-add-card" style="height:38px"><i class="ti ti-plus"></i> Agregar card</button>
+      </div>
+      <div class="table-wrap" style="margin-top:1rem">
+        <table class="hab-table">
+          <thead><tr>
+            <th style="width:50px;text-align:center">Ícono</th>
+            <th style="text-align:left;padding-left:12px">Card</th>
+            <th style="width:80px;text-align:center">Eliminar</th>
+          </tr></thead>
+          <tbody>${cards.map((c,i) => cardRow(c,i)).join("")}</tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Add card modal -->
+    <div class="card-add-modal modal-bg" style="display:none">
+      <div class="modal-box" style="max-width:440px">
+        <div class="modal-hdr"><h2>Agregar card</h2><button class="btn-close-card-modal"><i class="ti ti-x"></i></button></div>
+        <label>Ícono (emoji)</label>
+        <input class="inp-card-icon" type="text" placeholder="🧘" maxlength="4" style="width:70px;text-align:center;font-size:22px">
+        <label style="margin-top:12px">Título</label>
+        <input class="inp-card-title" type="text" placeholder="Ej: Meditación guiada" maxlength="60">
+        <label style="margin-top:12px">Tiempo</label>
+        <input class="inp-card-time" type="text" placeholder="Ej: 5 min" maxlength="20">
+        <label style="margin-top:12px">Descripción</label>
+        <textarea class="inp-card-desc" placeholder="Describe el ejercicio..." rows="3" style="width:100%;resize:vertical;border:1px solid var(--gray-200);border-radius:var(--radius-md);padding:8px 12px;font-size:13px;font-family:inherit"></textarea>
+        <label style="margin-top:12px">Link de video (opcional)</label>
+        <input class="inp-card-link" type="url" placeholder="https://youtube.com/...">
+        <button class="btn-green btn-do-add-card" style="margin-top:1.25rem"><i class="ti ti-plus"></i> Agregar</button>
+        <div class="auth-err card-add-err" style="min-height:18px;margin-top:8px"></div>
+      </div>
+    </div>`;
+
+  const modal    = pc.querySelector(".card-add-modal");
+  const addBtn   = pc.querySelector(".btn-add-card");
+  const closeBtn = pc.querySelector(".btn-close-card-modal");
+  const doAddBtn = pc.querySelector(".btn-do-add-card");
+  const errEl    = pc.querySelector(".card-add-err");
+
+  addBtn.addEventListener("click", () => {
+    pc.querySelector(".inp-card-icon").value  = "";
+    pc.querySelector(".inp-card-title").value = "";
+    pc.querySelector(".inp-card-time").value  = "";
+    pc.querySelector(".inp-card-desc").value  = "";
+    pc.querySelector(".inp-card-link").value  = "";
+    errEl.textContent = "";
+    modal.style.display = "flex";
+  });
+  closeBtn.addEventListener("click", () => { modal.style.display = "none"; });
+  modal.addEventListener("click", e => { if (e.target === modal) modal.style.display = "none"; });
+
+  doAddBtn.addEventListener("click", async () => {
+    const icon  = pc.querySelector(".inp-card-icon").value.trim();
+    const title2 = pc.querySelector(".inp-card-title").value.trim();
+    const time  = pc.querySelector(".inp-card-time").value.trim();
+    const desc  = pc.querySelector(".inp-card-desc").value.trim();
+    const link  = pc.querySelector(".inp-card-link").value.trim();
+    if (!icon)  { errEl.textContent = "Agrega un emoji."; return; }
+    if (!title2) { errEl.textContent = "Escribe un título."; return; }
+    if (!desc)  { errEl.textContent = "Escribe una descripción."; return; }
+    cards.push({ icon, title: title2, time, desc, link });
+    await onSave();
+    modal.style.display = "none";
+    showToast(`✓ Card "${title2}" agregada`);
+    buildCardManagerSection(containerId, title, icon, cards, onSave);
+  });
+
+  pc.querySelectorAll(".btn-delete-card").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const i = parseInt(btn.dataset.i);
+      const name = cards[i].title;
+      if (!confirm(`¿Eliminar "${name}"?`)) return;
+      cards.splice(i, 1);
+      await onSave();
+      showToast(`Card "${name}" eliminada`);
+      buildCardManagerSection(containerId, title, icon, cards, onSave);
+    });
+  });
+}
+
+function renderHabitosCards() {
+  const pc = document.getElementById("page-content");
+  pc.innerHTML = `
+    <div style="display:flex;gap:12px;margin-bottom:1.5rem;flex-wrap:wrap">
+      <button class="btn-summary tab-cards-btn active" data-section="habitos" style="height:36px"><i class="ti ti-list-check"></i> Hábitos del reto</button>
+      <button class="btn-summary tab-cards-btn" data-section="mindfulness" style="height:36px;background:var(--gray-100);color:var(--gray-700)"><i class="ti ti-brain"></i> Mindfulness</button>
+      <button class="btn-summary tab-cards-btn" data-section="pausa" style="height:36px;background:var(--gray-100);color:var(--gray-700)"><i class="ti ti-run"></i> Pausa Activa</button>
+    </div>
+    <div id="cards-section-habitos"></div>
+    <div id="cards-section-mindfulness" style="display:none"></div>
+    <div id="cards-section-pausa" style="display:none"></div>`;
+
+  // Render habits in first section (reuse existing renderHabitos logic inline)
+  renderHabitosInContainer("cards-section-habitos");
+
+  buildCardManagerSection(
+    "cards-section-mindfulness",
+    "Ejercicios de mindfulness (5 min)",
+    "ti ti-brain",
+    MINDFULNESS_CARDS,
+    saveMindfulness
+  );
+  buildCardManagerSection(
+    "cards-section-pausa",
+    "Ejercicios de Pausa Activa",
+    "ti ti-run",
+    PAUSA_CARDS,
+    savePausa
+  );
+
+  pc.querySelectorAll(".tab-cards-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      pc.querySelectorAll(".tab-cards-btn").forEach(b => {
+        b.style.background = "var(--gray-100)"; b.style.color = "var(--gray-700)"; b.classList.remove("active");
+      });
+      btn.style.background = ""; btn.style.color = ""; btn.classList.add("active");
+      ["habitos","mindfulness","pausa"].forEach(s => {
+        document.getElementById(`cards-section-${s}`).style.display = btn.dataset.section === s ? "block" : "none";
+      });
+    });
+  });
+}
+
+function renderHabitosInContainer(containerId) {
+  const container = document.getElementById(containerId);
   const rows = HABITS.map((h, i) => `
     <tr>
       <td class="hab-td-icon">${h.icon}</td>
@@ -995,11 +1212,11 @@ function renderHabitos() {
         <button class="btn-action btn-hab-up" data-i="${i}" ${i === 0 ? "disabled" : ""}><i class="ti ti-chevron-up"></i></button>
         <button class="btn-action btn-hab-down" data-i="${i}" ${i === HABITS.length - 1 ? "disabled" : ""}><i class="ti ti-chevron-down"></i></button>
         <button class="btn-action btn-hab-edit" data-i="${i}" title="Editar"><i class="ti ti-pencil"></i></button>
-        <button class="btn-action btn-delete" data-i="${i}"><i class="ti ti-trash"></i></button>
+        <button class="btn-action btn-hab-del" data-i="${i}"><i class="ti ti-trash"></i></button>
       </td>
     </tr>`).join("");
 
-  pc.innerHTML = `
+  container.innerHTML = `
     <div class="hab-manager">
       <div class="hab-header">
         <div>
@@ -1046,7 +1263,6 @@ function renderHabitos() {
       </div>
     </div>
 
-    <!-- Edit habit modal -->
     <div id="edit-habit-modal" class="modal-bg" style="display:none">
       <div class="modal-box" style="max-width:400px">
         <div class="modal-hdr"><h2>Editar hábito</h2><button id="close-edit-habit"><i class="ti ti-x"></i></button></div>
@@ -1077,7 +1293,7 @@ function renderHabitos() {
   document.getElementById("add-habit-modal").addEventListener("click", function(e) {
     if (e.target === this) this.style.display = "none";
   });
-  pc.querySelectorAll(".emoji-opt").forEach(btn => {
+  container.querySelectorAll(".emoji-opt").forEach(btn => {
     btn.addEventListener("click", () => { document.getElementById("hab-icon").value = btn.dataset.e; });
   });
   document.getElementById("do-add-habit").addEventListener("click", async () => {
@@ -1090,19 +1306,18 @@ function renderHabitos() {
     await saveHabits();
     document.getElementById("add-habit-modal").style.display = "none";
     showToast(`✓ Hábito "${name}" agregado`);
-    renderHabitos();
+    renderHabitosInContainer(containerId);
   });
-  /* edit habit modal */
   document.getElementById("close-edit-habit").addEventListener("click", () => {
     document.getElementById("edit-habit-modal").style.display = "none";
   });
   document.getElementById("edit-habit-modal").addEventListener("click", function(e) {
     if (e.target === this) this.style.display = "none";
   });
-  pc.querySelectorAll(".emoji-opt-edit").forEach(btn => {
+  container.querySelectorAll(".emoji-opt-edit").forEach(btn => {
     btn.addEventListener("click", () => { document.getElementById("edit-hab-icon").value = btn.dataset.e; });
   });
-  pc.querySelectorAll(".btn-hab-edit").forEach(btn => {
+  container.querySelectorAll(".btn-hab-edit").forEach(btn => {
     btn.addEventListener("click", () => {
       const i = parseInt(btn.dataset.i);
       document.getElementById("edit-hab-icon").value = HABITS[i].icon;
@@ -1122,27 +1337,26 @@ function renderHabitos() {
     HABITS[i] = { icon, name };
     await saveHabits();
     document.getElementById("edit-habit-modal").style.display = "none";
-    showToast(`✓ Hábito actualizado`);
-    renderHabitos();
+    showToast("✓ Hábito actualizado");
+    renderHabitosInContainer(containerId);
   });
-
-  pc.querySelectorAll(".btn-hab-up").forEach(btn => {
+  container.querySelectorAll(".btn-hab-up").forEach(btn => {
     btn.addEventListener("click", async () => {
       const i = parseInt(btn.dataset.i);
       if (i === 0) return;
       [HABITS[i - 1], HABITS[i]] = [HABITS[i], HABITS[i - 1]];
-      await saveHabits(); renderHabitos();
+      await saveHabits(); renderHabitosInContainer(containerId);
     });
   });
-  pc.querySelectorAll(".btn-hab-down").forEach(btn => {
+  container.querySelectorAll(".btn-hab-down").forEach(btn => {
     btn.addEventListener("click", async () => {
       const i = parseInt(btn.dataset.i);
       if (i === HABITS.length - 1) return;
       [HABITS[i], HABITS[i + 1]] = [HABITS[i + 1], HABITS[i]];
-      await saveHabits(); renderHabitos();
+      await saveHabits(); renderHabitosInContainer(containerId);
     });
   });
-  pc.querySelectorAll(".btn-delete").forEach(btn => {
+  container.querySelectorAll(".btn-hab-del").forEach(btn => {
     btn.addEventListener("click", async () => {
       const i = parseInt(btn.dataset.i);
       if (HABITS.length <= 1) { showToast("Debe haber al menos 1 hábito."); return; }
@@ -1150,7 +1364,7 @@ function renderHabitos() {
       HABITS.splice(i, 1);
       await saveHabits();
       showToast(`Hábito "${name}" eliminado`);
-      renderHabitos();
+      renderHabitosInContainer(containerId);
     });
   });
   document.getElementById("btn-reset-habits").addEventListener("click", async () => {
@@ -1158,7 +1372,7 @@ function renderHabitos() {
     HABITS = DEFAULT_HABITS.map(h => ({ ...h }));
     await saveHabits();
     showToast("✓ Hábitos restaurados");
-    renderHabitos();
+    renderHabitosInContainer(containerId);
   });
 }
 
