@@ -1272,13 +1272,13 @@ tr:hover td      { background: var(--gray-50); }
   margin-bottom: 1.25rem;
   flex-wrap: wrap;
 }
-/* ── Card link button (Ver video) ── */
+/* ── Ver video button ── */
 .card-link-btn {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   margin-top: 10px;
-  padding: 5px 12px;
+  padding: 6px 14px;
   background: var(--green);
   color: #fff !important;
   border-radius: var(--radius-md);
@@ -1286,14 +1286,6 @@ tr:hover td      { background: var(--gray-50); }
   font-weight: 600;
   text-decoration: none !important;
   transition: opacity .15s;
+  cursor: pointer;
 }
-.card-link-btn:hover { opacity: .85; color: #fff !important; }
-
-/* ── Notif header fix ── */
-.notif-manager > div:first-child > div:last-child {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-}
+.card-link-btn:hover { opacity: .85; }
