@@ -490,7 +490,7 @@ function renderNotificaciones() {
   const pc = document.getElementById("page-content");
 
   function notifCard(n, i) {
-    return `<div class="notif-card ${n.activa ? "notif-card-active" : ""}">
+    return `<div class="notif-card ${n.activa ? "notif-card-active" : ""}" data-i="${i}">
       <div class="notif-card-header">
         <div style="display:flex;align-items:center;gap:10px">
           <label class="notif-toggle">
@@ -499,14 +499,13 @@ function renderNotificaciones() {
           </label>
           <div>
             <div style="font-weight:700;font-size:14px">Recordatorio ${i + 1}</div>
-            <div style="font-size:12px;color:var(--gray-400)">
-              ${n.activa ? "Activo" : "Inactivo"}
-            </div>
+            <div class="notif-status-lbl" style="font-size:12px;color:var(--gray-400)">${n.activa ? "Activo" : "Inactivo"}</div>
           </div>
         </div>
         <div style="display:flex;align-items:center;gap:8px">
           <input type="time" class="notif-time" data-i="${i}" value="${n.hora}"
             style="border:1px solid var(--gray-200);border-radius:var(--radius-md);padding:6px 10px;font-size:14px;font-weight:600;color:var(--gray-900)">
+          <button class="btn-action btn-del-notif" data-i="${i}" title="Eliminar"><i class="ti ti-trash"></i></button>
         </div>
       </div>
       <div style="margin-top:12px">
@@ -540,12 +539,15 @@ function renderNotificaciones() {
           </div>
           <p style="font-size:12px;color:var(--gray-400)">Los horarios configurados aquí se aplican para todos los usuarios.</p>
         </div>
-        <button class="btn-green" id="btn-save-notif" style="height:38px"><i class="ti ti-device-floppy"></i> Guardar cambios</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn-summary" id="btn-add-notif" style="height:38px"><i class="ti ti-plus"></i> Agregar recordatorio</button>
+          <button class="btn-green" id="btn-save-notif" style="height:38px"><i class="ti ti-device-floppy"></i> Guardar cambios</button>
+        </div>
       </div>
 
       ${permBanner}
 
-      <div style="display:flex;flex-direction:column;gap:16px">
+      <div id="notif-list" style="display:flex;flex-direction:column;gap:16px">
         ${NOTIF_SCHEDULE.map((n, i) => notifCard(n, i)).join("")}
       </div>
 
@@ -558,11 +560,28 @@ function renderNotificaciones() {
           <li>Los cambios en horarios se aplican la próxima vez que el usuario abra la app.</li>
         </ul>
       </div>
+
+      <!-- Add notif modal -->
+      <div id="add-notif-modal" class="modal-bg" style="display:none">
+        <div class="modal-box" style="max-width:420px">
+          <div class="modal-hdr"><h2>Agregar recordatorio</h2><button id="close-add-notif"><i class="ti ti-x"></i></button></div>
+          <label>Hora</label>
+          <input id="new-notif-hora" type="time" value="09:00"
+            style="border:1px solid var(--gray-200);border-radius:var(--radius-md);padding:8px 12px;font-size:14px;font-weight:600;width:160px">
+          <label style="margin-top:12px">Título</label>
+          <input id="new-notif-titulo" type="text" placeholder="⏰ Reto 60 días · Kuale" maxlength="60">
+          <label style="margin-top:12px">Mensaje</label>
+          <input id="new-notif-mensaje" type="text" placeholder="¡No olvides registrar tus hábitos!" maxlength="120">
+          <button class="btn-green" id="do-add-notif" style="margin-top:1.25rem"><i class="ti ti-plus"></i> Agregar</button>
+          <div class="auth-err" id="add-notif-err" style="min-height:18px;margin-top:8px"></div>
+        </div>
+      </div>
     </div>`;
 
-  // Guardar
+  /* Guardar — lee todos los campos en orden */
   document.getElementById("btn-save-notif").addEventListener("click", async () => {
-    pc.querySelectorAll(".notif-card").forEach((card, i) => {
+    pc.querySelectorAll(".notif-card").forEach((card, idx) => {
+      const i = parseInt(card.dataset.i);
       NOTIF_SCHEDULE[i].activa  = card.querySelector(".notif-check").checked;
       NOTIF_SCHEDULE[i].hora    = card.querySelector(".notif-time").value;
       NOTIF_SCHEDULE[i].titulo  = card.querySelector(".notif-titulo").value.trim() || NOTIF_SCHEDULE[i].titulo;
@@ -574,16 +593,56 @@ function renderNotificaciones() {
     renderNotificaciones();
   });
 
-  // Toggle visual
+  /* Toggle visual */
   pc.querySelectorAll(".notif-check").forEach(chk => {
     chk.addEventListener("change", () => {
-      chk.closest(".notif-card").classList.toggle("notif-card-active", chk.checked);
-      chk.closest(".notif-card").querySelector("div[style*='Activo']") &&
-        (chk.closest(".notif-card").querySelector("div[style*='Activo'], .notif-card-header div div:last-child").textContent = chk.checked ? "Activo" : "Inactivo");
+      const card = chk.closest(".notif-card");
+      card.classList.toggle("notif-card-active", chk.checked);
+      card.querySelector(".notif-status-lbl").textContent = chk.checked ? "Activo" : "Inactivo";
     });
   });
 
-  // Activar notificaciones
+  /* Eliminar */
+  pc.querySelectorAll(".btn-del-notif").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const i = parseInt(btn.dataset.i);
+      if (!confirm(`¿Eliminar el recordatorio de las ${NOTIF_SCHEDULE[i].hora}?`)) return;
+      NOTIF_SCHEDULE.splice(i, 1);
+      await saveNotifSchedule();
+      sendScheduleToSW();
+      showToast("Recordatorio eliminado");
+      renderNotificaciones();
+    });
+  });
+
+  /* Agregar modal */
+  const addModal = document.getElementById("add-notif-modal");
+  document.getElementById("btn-add-notif").addEventListener("click", () => {
+    document.getElementById("new-notif-hora").value    = "09:00";
+    document.getElementById("new-notif-titulo").value  = "";
+    document.getElementById("new-notif-mensaje").value = "";
+    document.getElementById("add-notif-err").textContent = "";
+    addModal.style.display = "flex";
+  });
+  document.getElementById("close-add-notif").addEventListener("click", () => { addModal.style.display = "none"; });
+  addModal.addEventListener("click", e => { if (e.target === addModal) addModal.style.display = "none"; });
+
+  document.getElementById("do-add-notif").addEventListener("click", async () => {
+    const hora    = document.getElementById("new-notif-hora").value;
+    const titulo  = document.getElementById("new-notif-titulo").value.trim() || "⏰ Reto 60 días · Kuale";
+    const mensaje = document.getElementById("new-notif-mensaje").value.trim();
+    const err     = document.getElementById("add-notif-err");
+    if (!hora)    { err.textContent = "Elige una hora."; return; }
+    if (!mensaje) { err.textContent = "Escribe un mensaje."; return; }
+    NOTIF_SCHEDULE.push({ id: Date.now(), activa: true, hora, titulo, mensaje });
+    await saveNotifSchedule();
+    sendScheduleToSW();
+    addModal.style.display = "none";
+    showToast(`✓ Recordatorio a las ${hora} agregado`);
+    renderNotificaciones();
+  });
+
+  /* Activar notificaciones */
   const grantBtn = document.getElementById("btn-grant-notif");
   if (grantBtn) {
     grantBtn.addEventListener("click", async () => {
@@ -592,7 +651,6 @@ function renderNotificaciones() {
     });
   }
 }
-
 /* ── Toast ── */
 function showToast(msg) {
   let t = document.getElementById("app-toast");
