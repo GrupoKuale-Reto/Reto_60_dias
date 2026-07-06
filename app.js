@@ -1064,8 +1064,9 @@ function buildCardManagerSection(containerId, title, icon, cards, onSave) {
         <div style="font-size:12px;color:var(--gray-600);margin-top:2px">${c.desc}</div>
         ${c.link ? `<a href="${c.link}" target="_blank" style="font-size:11px;color:var(--green)"><i class="ti ti-link"></i> ${c.link}</a>` : ""}
       </td>
-      <td style="width:80px;text-align:center">
-        <button class="btn-action btn-delete-card" data-i="${i}"><i class="ti ti-trash"></i></button>
+      <td style="width:110px;text-align:center;display:flex;gap:4px;align-items:center;padding:8px 6px">
+        <button class="btn-action btn-edit-card" data-i="${i}" title="Editar"><i class="ti ti-pencil"></i></button>
+        <button class="btn-action btn-delete-card" data-i="${i}" title="Eliminar"><i class="ti ti-trash"></i></button>
       </td>
     </tr>`;
   }
@@ -1086,7 +1087,7 @@ function buildCardManagerSection(containerId, title, icon, cards, onSave) {
           <thead><tr>
             <th style="width:50px;text-align:center">Ícono</th>
             <th style="text-align:left;padding-left:12px">Card</th>
-            <th style="width:80px;text-align:center">Eliminar</th>
+            <th style="width:110px;text-align:center">Acciones</th>
           </tr></thead>
           <tbody>${cards.map((c,i) => cardRow(c,i)).join("")}</tbody>
         </table>
@@ -1109,6 +1110,25 @@ function buildCardManagerSection(containerId, title, icon, cards, onSave) {
         <input class="inp-card-link" type="url" placeholder="https://youtube.com/...">
         <button class="btn-green btn-do-add-card" style="margin-top:1.25rem"><i class="ti ti-plus"></i> Agregar</button>
         <div class="auth-err card-add-err" style="min-height:18px;margin-top:8px"></div>
+      </div>
+    </div>
+
+    <!-- Edit card modal -->
+    <div class="card-edit-modal modal-bg" style="display:none">
+      <div class="modal-box" style="max-width:440px">
+        <div class="modal-hdr"><h2>Editar card</h2><button class="btn-close-card-edit-modal"><i class="ti ti-x"></i></button></div>
+        <label>Ícono (emoji)</label>
+        <input class="inp-edit-card-icon" type="text" maxlength="4" style="width:70px;text-align:center;font-size:22px">
+        <label style="margin-top:12px">Título</label>
+        <input class="inp-edit-card-title" type="text" maxlength="60">
+        <label style="margin-top:12px">Tiempo</label>
+        <input class="inp-edit-card-time" type="text" maxlength="20">
+        <label style="margin-top:12px">Descripción</label>
+        <textarea class="inp-edit-card-desc" rows="3" style="width:100%;resize:vertical;border:1px solid var(--gray-200);border-radius:var(--radius-md);padding:8px 12px;font-size:13px;font-family:inherit"></textarea>
+        <label style="margin-top:12px">Link de video (opcional)</label>
+        <input class="inp-edit-card-link" type="url" placeholder="https://youtube.com/...">
+        <button class="btn-green btn-do-edit-card" style="margin-top:1.25rem"><i class="ti ti-check"></i> Guardar cambios</button>
+        <div class="auth-err card-edit-err" style="min-height:18px;margin-top:8px"></div>
       </div>
     </div>`;
 
@@ -1143,6 +1163,46 @@ function buildCardManagerSection(containerId, title, icon, cards, onSave) {
     await onSave();
     modal.style.display = "none";
     showToast(`✓ Card "${title2}" agregada`);
+    buildCardManagerSection(containerId, title, icon, cards, onSave);
+  });
+
+  /* Edit card */
+  const editModal    = pc.querySelector(".card-edit-modal");
+  const closeEditBtn = pc.querySelector(".btn-close-card-edit-modal");
+  const doEditBtn    = pc.querySelector(".btn-do-edit-card");
+  const editErrEl    = pc.querySelector(".card-edit-err");
+  let editingIndex   = -1;
+
+  closeEditBtn.addEventListener("click", () => { editModal.style.display = "none"; });
+  editModal.addEventListener("click", e => { if (e.target === editModal) editModal.style.display = "none"; });
+
+  pc.querySelectorAll(".btn-edit-card").forEach(btn => {
+    btn.addEventListener("click", () => {
+      editingIndex = parseInt(btn.dataset.i);
+      const c = cards[editingIndex];
+      pc.querySelector(".inp-edit-card-icon").value  = c.icon  || "";
+      pc.querySelector(".inp-edit-card-title").value = c.title || "";
+      pc.querySelector(".inp-edit-card-time").value  = c.time  || "";
+      pc.querySelector(".inp-edit-card-desc").value  = c.desc  || "";
+      pc.querySelector(".inp-edit-card-link").value  = c.link  || "";
+      editErrEl.textContent = "";
+      editModal.style.display = "flex";
+    });
+  });
+
+  doEditBtn.addEventListener("click", async () => {
+    const icon   = pc.querySelector(".inp-edit-card-icon").value.trim();
+    const title2 = pc.querySelector(".inp-edit-card-title").value.trim();
+    const time   = pc.querySelector(".inp-edit-card-time").value.trim();
+    const desc   = pc.querySelector(".inp-edit-card-desc").value.trim();
+    const link   = pc.querySelector(".inp-edit-card-link").value.trim();
+    if (!icon)   { editErrEl.textContent = "Agrega un emoji."; return; }
+    if (!title2) { editErrEl.textContent = "Escribe un título."; return; }
+    if (!desc)   { editErrEl.textContent = "Escribe una descripción."; return; }
+    cards[editingIndex] = { icon, title: title2, time, desc, link };
+    await onSave();
+    editModal.style.display = "none";
+    showToast(`✓ Card "${title2}" actualizada`);
     buildCardManagerSection(containerId, title, icon, cards, onSave);
   });
 
