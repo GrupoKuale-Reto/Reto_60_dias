@@ -1748,18 +1748,33 @@ function openPhotoUpload(day, habitName) {
             <div style="font-size:13px;font-weight:600">Galería</div>
             <div style="font-size:11px;color:var(--gray-400);margin-top:2px">Elige una foto</div>
           </div>
-          <input type="file" id="photo-file-input" accept="image/*"
-            style="display:none">
+          <input type="file" id="photo-file-input" accept="image/*" style="display:none">
         </label>
-        <label style="flex:1;cursor:pointer">
-          <div class="photo-opt-btn">
-            <i class="ti ti-camera" style="font-size:1.5rem;display:block;margin-bottom:6px"></i>
-            <div style="font-size:13px;font-weight:600">Cámara</div>
-            <div style="font-size:11px;color:var(--gray-400);margin-top:2px">Tomar foto</div>
-          </div>
-          <input type="file" id="photo-camera-input" accept="image/*" capture="environment"
-            style="display:none">
-        </label>
+        ${/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)
+          ? `<label style="flex:1;cursor:pointer">
+              <div class="photo-opt-btn">
+                <i class="ti ti-camera" style="font-size:1.5rem;display:block;margin-bottom:6px"></i>
+                <div style="font-size:13px;font-weight:600">Cámara</div>
+                <div style="font-size:11px;color:var(--gray-400);margin-top:2px">Tomar foto</div>
+              </div>
+              <input type="file" id="photo-camera-input" accept="image/*" capture="environment" style="display:none">
+            </label>`
+          : `<button type="button" id="photo-webcam-btn" style="flex:1;cursor:pointer;background:none;border:none;padding:0">
+              <div class="photo-opt-btn">
+                <i class="ti ti-camera" style="font-size:1.5rem;display:block;margin-bottom:6px"></i>
+                <div style="font-size:13px;font-weight:600">Cámara</div>
+                <div style="font-size:11px;color:var(--gray-400);margin-top:2px">Usar webcam</div>
+              </div>
+            </button>`
+        }
+      </div>
+      <!-- Webcam para PC -->
+      <div id="webcam-wrap" style="display:none;margin-top:12px;text-align:center">
+        <video id="webcam-video" autoplay playsinline style="width:100%;max-height:200px;border-radius:var(--radius-md);background:#000"></video>
+        <button type="button" id="webcam-capture-btn" class="btn-green" style="margin-top:8px">
+          <i class="ti ti-camera"></i> Capturar foto
+        </button>
+        <canvas id="webcam-canvas" style="display:none"></canvas>
       </div>
 
       <div id="photo-preview-wrap" style="display:none;margin-top:1rem;text-align:center">
@@ -1793,7 +1808,53 @@ function openPhotoUpload(day, habitName) {
   }
 
   document.getElementById("photo-file-input").addEventListener("change", e => handleFileSelect(e.target.files[0]));
-  document.getElementById("photo-camera-input").addEventListener("change", e => handleFileSelect(e.target.files[0]));
+
+  // Móvil: input con capture
+  const camInput = document.getElementById("photo-camera-input");
+  if (camInput) camInput.addEventListener("change", e => handleFileSelect(e.target.files[0]));
+
+  // PC: webcam con getUserMedia
+  const webcamBtn = document.getElementById("photo-webcam-btn");
+  if (webcamBtn) {
+    let stream = null;
+    webcamBtn.addEventListener("click", async () => {
+      const wrap = document.getElementById("webcam-wrap");
+      if (wrap.style.display === "block") {
+        // Apagar webcam
+        if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+        wrap.style.display = "none";
+        return;
+      }
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        document.getElementById("webcam-video").srcObject = stream;
+        wrap.style.display = "block";
+      } catch(e) {
+        document.getElementById("photo-upload-err").textContent = "No se pudo acceder a la cámara.";
+      }
+    });
+
+    document.getElementById("webcam-capture-btn").addEventListener("click", () => {
+      const video  = document.getElementById("webcam-video");
+      const canvas = document.getElementById("webcam-canvas");
+      canvas.width  = video.videoWidth;
+      canvas.height = video.videoHeight;
+      canvas.getContext("2d").drawImage(video, 0, 0);
+      canvas.toBlob(blob => {
+        if (!blob) return;
+        const file = new File([blob], "webcam.jpg", { type: "image/jpeg" });
+        handleFileSelect(file);
+        // Apagar webcam
+        if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+        document.getElementById("webcam-wrap").style.display = "none";
+      }, "image/jpeg", 0.9);
+    });
+
+    // Apagar webcam al cerrar modal
+    document.getElementById("close-photo-upload").addEventListener("click", () => {
+      if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+    });
+  }
 
   document.getElementById("do-upload-photo").addEventListener("click", async () => {
     if (!selectedFile) return;
