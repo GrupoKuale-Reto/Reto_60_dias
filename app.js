@@ -1741,12 +1741,25 @@ function openPhotoUpload(day, habitName) {
       </div>
       <p style="font-size:12px;color:var(--gray-400);margin-bottom:1rem">${habitName} · Día ${day + 1}</p>
 
-      <div class="photo-drop-zone" id="photo-drop-zone">
-        <i class="ti ti-photo" style="font-size:2rem;color:var(--gray-400);display:block;margin-bottom:8px"></i>
-        <div style="font-size:13px;font-weight:600;color:var(--gray-600)">Toca para seleccionar</div>
-        <div style="font-size:11px;color:var(--gray-400);margin-top:4px">Galería o cámara</div>
-        <input type="file" id="photo-file-input" accept="image/*" capture="environment"
-          style="position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%">
+      <div style="display:flex;gap:10px;margin-bottom:4px">
+        <label style="flex:1;cursor:pointer">
+          <div class="photo-opt-btn">
+            <i class="ti ti-photo" style="font-size:1.5rem;display:block;margin-bottom:6px"></i>
+            <div style="font-size:13px;font-weight:600">Galería</div>
+            <div style="font-size:11px;color:var(--gray-400);margin-top:2px">Elige una foto</div>
+          </div>
+          <input type="file" id="photo-file-input" accept="image/*"
+            style="display:none">
+        </label>
+        <label style="flex:1;cursor:pointer">
+          <div class="photo-opt-btn">
+            <i class="ti ti-camera" style="font-size:1.5rem;display:block;margin-bottom:6px"></i>
+            <div style="font-size:13px;font-weight:600">Cámara</div>
+            <div style="font-size:11px;color:var(--gray-400);margin-top:2px">Tomar foto</div>
+          </div>
+          <input type="file" id="photo-camera-input" accept="image/*" capture="environment"
+            style="display:none">
+        </label>
       </div>
 
       <div id="photo-preview-wrap" style="display:none;margin-top:1rem;text-align:center">
@@ -1767,17 +1780,20 @@ function openPhotoUpload(day, habitName) {
 
   let selectedFile = null;
 
-  document.getElementById("photo-file-input").addEventListener("change", e => {
-    selectedFile = e.target.files[0];
-    if (!selectedFile) return;
+  function handleFileSelect(file) {
+    if (!file) return;
+    selectedFile = file;
     const reader = new FileReader();
     reader.onload = ev => {
       document.getElementById("photo-preview-img").src = ev.target.result;
       document.getElementById("photo-preview-wrap").style.display = "block";
       document.getElementById("do-upload-photo").style.display = "block";
     };
-    reader.readAsDataURL(selectedFile);
-  });
+    reader.readAsDataURL(file);
+  }
+
+  document.getElementById("photo-file-input").addEventListener("change", e => handleFileSelect(e.target.files[0]));
+  document.getElementById("photo-camera-input").addEventListener("change", e => handleFileSelect(e.target.files[0]));
 
   document.getElementById("do-upload-photo").addEventListener("click", async () => {
     if (!selectedFile) return;
