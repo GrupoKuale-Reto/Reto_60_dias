@@ -780,16 +780,10 @@ function renderTracker() {
     html += `<tr><td class="habit-name"><span class="habit-icon">${h.icon}</span>${h.name}${badge}</td>`;
     days.forEach(d => {
       const s = gs(d, hi);
-      const hasPhoto = USER_PHOTOS && USER_PHOTOS[`${d}_${hi}`];
-      const camBtn = s === 1
-        ? `<button class="cam-btn${hasPhoto ? " has-photo" : ""}" data-d="${d}" data-h="${hi}" title="${hasPhoto ? "Ver/cambiar foto" : "Agregar foto"}">
-             ${hasPhoto ? "📷" : "<i class='ti ti-camera' style='font-size:10px'></i>"}
-           </button>`
-        : "";
-      html += `<td class="${d === 0 ? "today-col" : ""}" style="position:relative">
+      html += `<td class="${d === 0 ? "today-col" : ""}">
         <button class="check-btn ${s === 1 ? "done" : s === 2 ? "fail" : ""}" data-d="${d}" data-h="${hi}">
           ${s === 1 ? "✓" : s === 2 ? "✗" : ""}
-        </button>${camBtn}</td>`;
+        </button></td>`;
     });
     html += `<td class="row-progress">
       <div class="progress-bar-wrap"><div class="progress-bar-fill" style="width:${pct}%"></div></div>
@@ -895,19 +889,15 @@ function renderTracker() {
     btn.addEventListener("click", async function () {
       const d = parseInt(this.dataset.d);
       const h = parseInt(this.dataset.h);
+      const prevState = gs(d, h);
       cs(d, h);
+      const newState = gs(d, h);
       renderTracker();
       await autoSave();
-    });
-  });
-
-  /* cámara — solo aparece en hábitos cumplidos */
-  document.querySelectorAll(".cam-btn").forEach(btn => {
-    btn.addEventListener("click", function (e) {
-      e.stopPropagation();
-      const d = parseInt(this.dataset.d);
-      const h = parseInt(this.dataset.h);
-      askPhotoForDay(d, HABITS[h]?.name || "Hábito");
+      // Preguntar foto solo al marcar como cumplido (estado 1)
+      if (newState === 1 && prevState !== 1) {
+        setTimeout(() => askPhotoForDay(d, HABITS[h]?.name || "Hábito"), 300);
+      }
     });
   });
 
@@ -2123,4 +2113,324 @@ document.getElementById("confirm-ok").addEventListener("click", async () => {
     hideLoading();
     renderAdmin();
   } catch { hideLoading(); showToast("Error al eliminar usuario."); }
+});
+/* ══════════════════════════════════════
+   ASISTENTE IA — Chat flotante
+   Groq (llama-3.3-70b) + Tavily search
+══════════════════════════════════════ */
+
+const GROQ_KEY   = "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";
+const TAVILY_KEY = "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";
+const GROQ_MODEL = "llama-3.3-70b-versatile";
+
+let chatHistory  = [];
+let chatOpen     = false;
+
+/* ── Inyectar HTML del chat al body ── */
+function initChat() {
+  if (document.getElementById("ai-chat-panel")) return;
+
+  document.body.insertAdjacentHTML("beforeend", `
+    <!-- Botón flotante -->
+    <button id="chat-fab" title="Asistente IA del reto" aria-label="Abrir asistente">
+      <i class="ti ti-message-chatbot" id="chat-fab-icon"></i>
+    </button>
+
+    <!-- Panel de chat -->
+    <div id="ai-chat-panel" aria-label="Chat con asistente IA">
+      <div id="chat-header">
+        <div id="chat-header-left">
+          <div id="chat-avatar"><i class="ti ti-robot"></i></div>
+          <div>
+            <div id="chat-title">Asistente Reto 60 días</div>
+            <div id="chat-subtitle">Con búsqueda web · Powered by Groq</div>
+          </div>
+        </div>
+        <div id="chat-header-right">
+          <button id="chat-clear" title="Limpiar conversación"><i class="ti ti-trash"></i></button>
+          <button id="chat-close" title="Cerrar"><i class="ti ti-x"></i></button>
+        </div>
+      </div>
+
+      <div id="chat-messages">
+        <div class="chat-msg ai">
+          <div class="chat-bubble">
+            <p>¡Hola! 👋 Soy tu asistente del <strong>Reto 60 días Kuale</strong>.</p>
+            <p>Puedo ayudarte con consejos sobre tus hábitos, motivación, nutrición, ejercicio y más. También puedo buscar información actualizada en internet.</p>
+            <p>¿En qué te puedo ayudar hoy?</p>
+          </div>
+        </div>
+      </div>
+
+      <div id="chat-suggestions">
+        <button class="chat-chip" data-q="¿Cómo puedo mantener la motivación durante el reto?">💪 Motivación</button>
+        <button class="chat-chip" data-q="Dame consejos para tomar 2 litros de agua al día">💧 Hidratación</button>
+        <button class="chat-chip" data-q="¿Qué ejercicios rápidos puedo hacer en la oficina?">🏃 Ejercicio</button>
+        <button class="chat-chip" data-q="¿Cómo mejorar mi calidad de sueño?">😴 Sueño</button>
+        <button class="chat-chip" data-q="Busca las últimas tendencias en hábitos saludables">🔍 Buscar info</button>
+      </div>
+
+      <div id="chat-input-area">
+        <textarea id="chat-input" placeholder="Escribe tu pregunta... (Enter para enviar)" rows="1"></textarea>
+        <button id="chat-send"><i class="ti ti-send"></i></button>
+      </div>
+    </div>
+  `);
+
+  /* ── Marked.js CDN dinámico ── */
+  if (!window.marked) {
+    const s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js";
+    document.head.appendChild(s);
+  }
+
+  /* ── Events ── */
+  document.getElementById("chat-fab").addEventListener("click", toggleChat);
+  document.getElementById("chat-close").addEventListener("click", toggleChat);
+  document.getElementById("chat-send").addEventListener("click", sendChatMessage);
+  document.getElementById("chat-clear").addEventListener("click", clearChat);
+
+  document.getElementById("chat-input").addEventListener("keydown", e => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChatMessage(); }
+  });
+
+  /* auto-resize textarea */
+  document.getElementById("chat-input").addEventListener("input", function () {
+    this.style.height = "auto";
+    this.style.height = Math.min(this.scrollHeight, 120) + "px";
+  });
+
+  /* suggestion chips */
+  document.querySelectorAll(".chat-chip").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.getElementById("chat-input").value = btn.dataset.q;
+      sendChatMessage();
+    });
+  });
+}
+
+function toggleChat() {
+  chatOpen = !chatOpen;
+  const panel = document.getElementById("ai-chat-panel");
+  const icon  = document.getElementById("chat-fab-icon");
+  panel.classList.toggle("open", chatOpen);
+  icon.className = chatOpen ? "ti ti-x" : "ti ti-message-chatbot";
+  if (chatOpen) {
+    setTimeout(() => document.getElementById("chat-input").focus(), 300);
+    document.getElementById("chat-suggestions").style.display =
+      chatHistory.length === 0 ? "flex" : "none";
+  }
+}
+
+function clearChat() {
+  chatHistory = [];
+  const msgs = document.getElementById("chat-messages");
+  msgs.innerHTML = `<div class="chat-msg ai">
+    <div class="chat-bubble"><p>Conversación reiniciada. ¿En qué te puedo ayudar? 😊</p></div>
+  </div>`;
+  document.getElementById("chat-suggestions").style.display = "flex";
+}
+
+/* ── Construir contexto del usuario ── */
+function buildUserContext() {
+  if (!curUser || isAdmin) return "";
+
+  let tDone = 0, tMark = 0;
+  for (let d = 0; d < DAYS; d++) {
+    HABITS.forEach((_, hi) => {
+      const s = gs(d, hi);
+      if (s > 0) { tMark++; if (s === 1) tDone++; }
+    });
+  }
+  const daysWithData = new Set(
+    Object.keys(uData.data || {}).filter(k => (uData.data || {})[k] > 0).map(k => k.split("_")[0])
+  ).size;
+  const pct = tMark > 0 ? Math.round(tDone / tMark * 100) : 0;
+
+  return `
+CONTEXTO DEL USUARIO:
+- Nombre: ${curUser}
+- Días registrados: ${daysWithData}/60
+- Cumplimiento general: ${pct}%
+- Hábitos del reto: ${HABITS.map(h => `${h.icon} ${h.name}`).join(", ")}
+- Semana actual: ${curWeek + 1} de ${TOTAL_WEEKS}
+`;
+}
+
+/* ── Tavily search ── */
+async function tavilySearch(query) {
+  try {
+    const res = await fetch("https://api.tavily.com/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        api_key: TAVILY_KEY,
+        query,
+        search_depth: "basic",
+        max_results: 4,
+        include_answer: true,
+      })
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const results = (data.results || []).map(r =>
+      `**${r.title}**\n${r.content?.slice(0, 300)}...\nFuente: ${r.url}`
+    ).join("\n\n");
+    return data.answer
+      ? `Respuesta directa: ${data.answer}\n\nFuentes:\n${results}`
+      : results;
+  } catch {
+    return null;
+  }
+}
+
+/* ── Decidir si necesita búsqueda web ── */
+function needsWebSearch(text) {
+  const triggers = [
+    "busca", "buscar", "búsqueda", "últimas", "reciente", "actual",
+    "hoy", "noticia", "tendencia", "estudio", "investigación",
+    "qué dice", "según", "información sobre", "datos de"
+  ];
+  const lower = text.toLowerCase();
+  return triggers.some(t => lower.includes(t));
+}
+
+/* ── Enviar mensaje ── */
+async function sendChatMessage() {
+  const input = document.getElementById("chat-input");
+  const text  = input.value.trim();
+  if (!text) return;
+
+  input.value = "";
+  input.style.height = "auto";
+  document.getElementById("chat-suggestions").style.display = "none";
+
+  appendMessage("user", text);
+  chatHistory.push({ role: "user", content: text });
+
+  const typingId = appendTyping();
+
+  try {
+    let webContext = "";
+    if (needsWebSearch(text)) {
+      const searchQuery = text.replace(/busca|buscar|búsqueda/gi, "").trim();
+      const results = await tavilySearch(searchQuery || text);
+      if (results) {
+        webContext = `\n\nINFORMACIÓN WEB ENCONTRADA:\n${results}\n\nUsa esta información para enriquecer tu respuesta y cita las fuentes.`;
+      }
+    }
+
+    const systemPrompt = `Eres el asistente IA oficial del **Reto 60 días de Buenos Hábitos de Grupo Kuale**. 
+Eres un experto en bienestar, salud, hábitos, nutrición, ejercicio y productividad.
+Tu objetivo es motivar, guiar y apoyar a los empleados de Grupo Kuale en su reto de 60 días.
+
+REGLAS:
+- Responde SIEMPRE en español
+- Usa Markdown para formatear: **negritas**, listas, encabezados cuando sea útil
+- Sé motivador, positivo y práctico
+- Da consejos concretos y accionables
+- Si el usuario comparte su progreso, felicítalo y anímalo
+- Mantén el contexto del reto de 60 días siempre presente
+- Máximo 400 palabras por respuesta (excepto si piden algo muy detallado)
+- Si usas información web, cita las fuentes al final
+
+${buildUserContext()}${webContext}`;
+
+    const messages = [
+      { role: "system", content: systemPrompt },
+      ...chatHistory.slice(-10) // últimos 10 mensajes para contexto
+    ];
+
+    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${GROQ_KEY}`
+      },
+      body: JSON.stringify({
+        model: GROQ_MODEL,
+        messages,
+        max_tokens: 1024,
+        temperature: 0.7,
+        stream: false
+      })
+    });
+
+    removeTyping(typingId);
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error?.message || `HTTP ${res.status}`);
+    }
+
+    const data   = await res.json();
+    const reply  = data.choices?.[0]?.message?.content || "No obtuve respuesta.";
+    chatHistory.push({ role: "assistant", content: reply });
+    appendMessage("ai", reply);
+
+  } catch (e) {
+    removeTyping(typingId);
+    appendMessage("ai", `❌ **Error:** ${e.message}\n\nVerifica tu conexión a internet e intenta de nuevo.`);
+  }
+}
+
+/* ── Helpers de UI ── */
+function renderMarkdown(text) {
+  if (window.marked) {
+    window.marked.setOptions({ breaks: true, gfm: true });
+    return window.marked.parse(text);
+  }
+  /* fallback básico si marked no cargó aún */
+  return text
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*(.+?)\*/g, "<em>$1</em>")
+    .replace(/^### (.+)$/gm, "<h3>$1</h3>")
+    .replace(/^## (.+)$/gm, "<h2>$1</h2>")
+    .replace(/^# (.+)$/gm, "<h1>$1</h1>")
+    .replace(/^- (.+)$/gm, "<li>$1</li>")
+    .replace(/(<li>[\s\S]+?<\/li>)/g, "<ul>$1</ul>")
+    .replace(/\n/g, "<br>");
+}
+
+function appendMessage(role, text) {
+  const msgs = document.getElementById("chat-messages");
+  const div  = document.createElement("div");
+  div.className = `chat-msg ${role}`;
+
+  const bubble = document.createElement("div");
+  bubble.className = "chat-bubble";
+
+  if (role === "ai") {
+    bubble.innerHTML = renderMarkdown(text);
+  } else {
+    bubble.textContent = text;
+  }
+
+  div.appendChild(bubble);
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function appendTyping() {
+  const msgs = document.getElementById("chat-messages");
+  const id   = "typing-" + Date.now();
+  msgs.insertAdjacentHTML("beforeend", `
+    <div class="chat-msg ai" id="${id}">
+      <div class="chat-bubble typing-bubble">
+        <span class="typing-dot"></span>
+        <span class="typing-dot"></span>
+        <span class="typing-dot"></span>
+      </div>
+    </div>`);
+  msgs.scrollTop = msgs.scrollHeight;
+  return id;
+}
+
+function removeTyping(id) {
+  document.getElementById(id)?.remove();
+}
+
+/* ── Inicializar cuando el DOM esté listo ── */
+document.addEventListener("DOMContentLoaded", () => {
+  initChat();
 });
