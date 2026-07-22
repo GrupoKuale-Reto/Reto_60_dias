@@ -780,10 +780,16 @@ function renderTracker() {
     html += `<tr><td class="habit-name"><span class="habit-icon">${h.icon}</span>${h.name}${badge}</td>`;
     days.forEach(d => {
       const s = gs(d, hi);
-      html += `<td class="${d === 0 ? "today-col" : ""}">
+      const hasPhoto = USER_PHOTOS && USER_PHOTOS[`${d}_${hi}`];
+      const camBtn = s === 1
+        ? `<button class="cam-btn${hasPhoto ? " has-photo" : ""}" data-d="${d}" data-h="${hi}" title="${hasPhoto ? "Ver/cambiar foto" : "Agregar foto"}">
+             ${hasPhoto ? "📷" : "<i class='ti ti-camera' style='font-size:10px'></i>"}
+           </button>`
+        : "";
+      html += `<td class="${d === 0 ? "today-col" : ""}" style="position:relative">
         <button class="check-btn ${s === 1 ? "done" : s === 2 ? "fail" : ""}" data-d="${d}" data-h="${hi}">
           ${s === 1 ? "✓" : s === 2 ? "✗" : ""}
-        </button></td>`;
+        </button>${camBtn}</td>`;
     });
     html += `<td class="row-progress">
       <div class="progress-bar-wrap"><div class="progress-bar-fill" style="width:${pct}%"></div></div>
@@ -889,15 +895,19 @@ function renderTracker() {
     btn.addEventListener("click", async function () {
       const d = parseInt(this.dataset.d);
       const h = parseInt(this.dataset.h);
-      const prevState = gs(d, h);
       cs(d, h);
-      const newState = gs(d, h);
       renderTracker();
       await autoSave();
-      // Preguntar foto solo al marcar como cumplido (estado 1)
-      if (newState === 1 && prevState !== 1) {
-        setTimeout(() => askPhotoForDay(d, HABITS[h]?.name || "Hábito"), 300);
-      }
+    });
+  });
+
+  /* cámara — solo aparece en hábitos cumplidos */
+  document.querySelectorAll(".cam-btn").forEach(btn => {
+    btn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      const d = parseInt(this.dataset.d);
+      const h = parseInt(this.dataset.h);
+      askPhotoForDay(d, HABITS[h]?.name || "Hábito");
     });
   });
 
