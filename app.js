@@ -2544,7 +2544,7 @@ document.addEventListener("DOMContentLoaded", () => {
 ══════════════════════════════════════ */
 
 const OS_APP_ID  = "36858566-60a8-475a-a21e-732b348c717a";
-const OS_API_KEY = "os_v2_app_g2cykztavbdvviq6omvtjddrpkpf7gyzohfu5p5hrnilkkh5n2m2np2vhv4dikctlym2ua36vfu5lw6a6mkpdmr6e2z62tgkt6yifdi";
+const OS_API_KEY = "os_v2_app_g2cykztavbdvviq6omvtjddrpi424xkfdveu3zupvureuih2gigsueobquf6udxdtcv7444nlvzdg35o5pz3ftda76jwzotj4zblwey";
 
 /* ── OneSignal init manejado por index.html ── */
 function initOneSignal() {
