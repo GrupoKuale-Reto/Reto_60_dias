@@ -393,7 +393,11 @@ async function launchMain() {
   chip.className   = isAdmin ? "admin-chip" : "user-chip";
   buildTabs();
   renderTab(isAdmin ? "admin" : "tracker");
-  if (!isAdmin) scheduleMidnightSave();
+  if (!isAdmin) {
+    scheduleMidnightSave();
+    /* Suscribir a OneSignal en segundo plano */
+    setTimeout(() => subscribeToNotifications(), 3000);
+  }
 }
 
 /* ─── Recover password ─── */
@@ -621,7 +625,14 @@ function renderNotificaciones() {
     });
     await saveNotifSchedule();
     sendScheduleToSW();
-    showToast("✓ Notificaciones guardadas");
+
+    /* También enviar via OneSignal a todos los dispositivos móviles */
+    const activas = NOTIF_SCHEDULE.filter(n => n.activa);
+    for (const n of activas) {
+      await sendPushNotification(n.titulo, n.mensaje, n.hora);
+    }
+
+    showToast("✓ Notificaciones guardadas y programadas para todos los dispositivos");
     renderNotificaciones();
   });
 
@@ -1986,7 +1997,7 @@ let swRegistration = null;
 async function registerSW() {
   if (!("serviceWorker" in navigator)) return;
   try {
-    swRegistration = await navigator.serviceWorker.register("sw.js");
+    swRegistration = await navigator.serviceWorker.register('OneSignalSDKWorker.js')
     // Esperar a que el SW esté activo
     await navigator.serviceWorker.ready;
     // Enviar horarios al SW
@@ -2443,4 +2454,255 @@ function removeTyping(id) {
 /* ── Inicializar cuando el DOM esté listo ── */
 document.addEventListener("DOMContentLoaded", () => {
   initChat();
+  initOneSignal();
 });
+/* ══════════════════════════════════════
+   ONESIGNAL — Notificaciones push reales
+   App ID: 36858566-60a8-475a-a21e-732b348c717a
+══════════════════════════════════════ */
+
+const OS_APP_ID  = "36858566-60a8-475a-a21e-732b348c717a";
+const OS_API_KEY = "os_v2_app_g2cykztavbdvviq6omvtjddrpkyem7pguoguzxn5xlpcyzpc2nnshpxgvvmaui6vipjol3eqobwongmjkjkstayl2pqm22vvv6otrja";
+
+/* ── Inicializar OneSignal ── */
+async function initOneSignal() {
+  if (!window.OneSignalDeferred) {
+    window.OneSignalDeferred = [];
+  }
+  window.OneSignalDeferred.push(async function(OneSignal) {
+    await OneSignal.init({
+      appId: OS_APP_ID,
+      notifyButton: { enable: false }, // usamos nuestro propio botón
+      allowLocalhostAsSecureOrigin: true,
+    });
+  });
+}
+
+/* ── Suscribir usuario a notificaciones ── */
+async function subscribeToNotifications() {
+  if (!window.OneSignal) {
+    showToast("Notificaciones no disponibles en este navegador.");
+    return;
+  }
+  try {
+    const permission = await OneSignal.Notification.requestPermission();
+    if (permission === "granted") {
+      // Guardar el external_id del usuario para poder segmentar
+      await OneSignal.login(curUser);
+      showToast("✓ Notificaciones activadas en este dispositivo");
+      updateNotifyBtn();
+    } else {
+      showToast("Permiso de notificaciones denegado.");
+    }
+  } catch(e) {
+    console.error("OneSignal error:", e);
+    showToast("Error al activar notificaciones.");
+  }
+}
+
+/* ── Enviar notificación masiva (solo admin) ── */
+async function sendPushNotification(title, message, scheduledTime = null) {
+  const body = {
+    app_id: OS_APP_ID,
+    headings: { es: title, en: title },
+    contents: { es: message, en: message },
+    included_segments: ["All"],
+    small_icon: "logo-icon-new",
+    large_icon: "logo-icon-new.png",
+    url: window.location.href,
+  };
+
+  /* Si tiene hora programada (formato "HH:MM") */
+  if (scheduledTime) {
+    const [hh, mm] = scheduledTime.split(":").map(Number);
+    const sendAt = new Date();
+    sendAt.setHours(hh, mm, 0, 0);
+    if (sendAt <= new Date()) sendAt.setDate(sendAt.getDate() + 1);
+    body.send_after = sendAt.toUTCString();
+    body.delayed_option = "timezone";
+    body.delivery_time_of_day = scheduledTime;
+  }
+
+  try {
+    const res = await fetch("https://onesignal.com/api/v1/notifications", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Key ${OS_API_KEY}`,
+      },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (data.id) {
+      return { ok: true, id: data.id, recipients: data.recipients };
+    } else {
+      return { ok: false, error: data.errors?.[0] || "Error desconocido" };
+    }
+  } catch(e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+/* ── Renderizar sección de notificaciones en panel admin ── */
+async function renderNotifAdmin() {
+  const pc = document.getElementById("page-content");
+
+  /* Obtener notificaciones enviadas previamente */
+  let historial = [];
+  try {
+    const snap = await getDoc(doc(db, "config", "notif_history"));
+    if (snap.exists()) historial = snap.data().items || [];
+  } catch {}
+
+  pc.innerHTML = `
+    <div class="hab-manager">
+      <div class="hab-header">
+        <div>
+          <div class="chart-title" style="margin-bottom:4px">
+            <i class="ti ti-bell" style="color:var(--green);margin-right:6px"></i>
+            Enviar notificación push
+          </div>
+          <p style="font-size:12px;color:var(--gray-400)">
+            Se envía a todos los usuarios que tengan notificaciones activadas en su dispositivo.
+          </p>
+        </div>
+      </div>
+
+      <div style="margin-top:1.25rem;display:flex;flex-direction:column;gap:12px">
+        <div>
+          <label style="font-size:12px;font-weight:500;color:var(--gray-600);display:block;margin-bottom:5px">Título</label>
+          <input id="notif-title" type="text" value="⏰ Reto 60 días · Kuale"
+            style="width:100%;height:40px;padding:0 12px;border:1px solid var(--gray-200);border-radius:var(--radius-md);font-size:14px;outline:none">
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:500;color:var(--gray-600);display:block;margin-bottom:5px">Mensaje</label>
+          <textarea id="notif-msg" rows="3"
+            style="width:100%;padding:10px 12px;border:1px solid var(--gray-200);border-radius:var(--radius-md);font-size:14px;outline:none;resize:vertical;font-family:inherit">¡No olvides registrar tus hábitos de hoy! Tienes hasta las 11:59 PM. 💪</textarea>
+        </div>
+        <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+          <div>
+            <label style="font-size:12px;font-weight:500;color:var(--gray-600);display:block;margin-bottom:5px">
+              Hora de envío <span style="font-weight:400;color:var(--gray-400)">(dejar vacío = enviar ahora)</span>
+            </label>
+            <input id="notif-time" type="time" value="20:00"
+              style="height:40px;padding:0 12px;border:1px solid var(--gray-200);border-radius:var(--radius-md);font-size:14px;outline:none">
+          </div>
+          <div style="display:flex;gap:8px">
+            <button id="btn-send-now" class="btn-summary" style="height:40px">
+              <i class="ti ti-send"></i> Enviar ahora
+            </button>
+            <button id="btn-send-scheduled" class="btn-summary" style="height:40px;border-color:var(--gray-400);color:var(--gray-600)">
+              <i class="ti ti-clock"></i> Programar hora
+            </button>
+          </div>
+        </div>
+        <div id="notif-result" style="min-height:20px;font-size:13px"></div>
+      </div>
+
+      <!-- Plantillas rápidas -->
+      <div style="margin-top:1.5rem">
+        <div class="chart-title" style="margin-bottom:10px">Mensajes rápidos</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">
+          ${[
+            { t: "⏰ Recordatorio diario", m: "¡No olvides registrar tus hábitos de hoy! Tienes hasta las 11:59 PM. 💪" },
+            { t: "🏆 ¡Motivación!", m: "¡Vas muy bien en el Reto 60 días! Cada hábito cuenta. ¡Sigue adelante!" },
+            { t: "📊 Revisa tu progreso", m: "¿Ya viste cuánto has avanzado? Entra a la app y revisa tu resumen del reto." },
+            { t: "🌟 ¡Mitad del reto!", m: "¡Ya llegaste a la mitad del Reto 60 días! El esfuerzo vale la pena. ¡No pares!" },
+          ].map(p => `<button class="notif-template chat-chip" data-title="${p.t}" data-msg="${p.m}">${p.t}</button>`).join("")}
+        </div>
+      </div>
+
+      <!-- Historial -->
+      ${historial.length > 0 ? `
+        <div style="margin-top:1.5rem">
+          <div class="chart-title" style="margin-bottom:10px">Últimas notificaciones enviadas</div>
+          <div class="table-wrap">
+            <table class="hab-table">
+              <thead><tr>
+                <th style="text-align:left;padding-left:14px">Título</th>
+                <th style="text-align:left;padding-left:8px">Mensaje</th>
+                <th>Enviada</th>
+                <th>Tipo</th>
+              </tr></thead>
+              <tbody>
+                ${historial.slice(-10).reverse().map(h => `
+                  <tr>
+                    <td style="padding-left:14px;font-weight:500">${h.title}</td>
+                    <td style="padding-left:8px;font-size:12px;color:var(--gray-600)">${h.msg.slice(0,60)}...</td>
+                    <td style="text-align:center;font-size:12px">${h.sentAt}</td>
+                    <td style="text-align:center"><span class="badge ${h.scheduled ? "badge-gray" : "badge-green"}">${h.scheduled ? "Programada" : "Inmediata"}</span></td>
+                  </tr>`).join("")}
+              </tbody>
+            </table>
+          </div>
+        </div>` : ""}
+    </div>`;
+
+  /* Plantillas rápidas */
+  pc.querySelectorAll(".notif-template").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.getElementById("notif-title").value = btn.dataset.title;
+      document.getElementById("notif-msg").value   = btn.dataset.msg;
+    });
+  });
+
+  /* Enviar ahora */
+  document.getElementById("btn-send-now").addEventListener("click", async function() {
+    await doSendNotif(false);
+  });
+
+  /* Programar */
+  document.getElementById("btn-send-scheduled").addEventListener("click", async function() {
+    await doSendNotif(true);
+  });
+}
+
+async function doSendNotif(scheduled) {
+  const title   = document.getElementById("notif-title").value.trim();
+  const msg     = document.getElementById("notif-msg").value.trim();
+  const time    = document.getElementById("notif-time").value;
+  const result  = document.getElementById("notif-result");
+
+  if (!title || !msg) { result.style.color = "var(--red)"; result.textContent = "Escribe título y mensaje."; return; }
+
+  const sendBtn = document.getElementById(scheduled ? "btn-send-scheduled" : "btn-send-now");
+  sendBtn.disabled = true;
+  sendBtn.innerHTML = '<i class="ti ti-loader"></i> Enviando...';
+  result.textContent = "";
+
+  const res = await sendPushNotification(title, msg, scheduled ? time : null);
+
+  sendBtn.disabled = false;
+  sendBtn.innerHTML = scheduled
+    ? '<i class="ti ti-clock"></i> Programar hora'
+    : '<i class="ti ti-send"></i> Enviar ahora';
+
+  if (res.ok) {
+    result.style.color = "var(--green)";
+    result.textContent = scheduled
+      ? `✓ Programada para las ${time} — llegará a ${res.recipients || "todos"} dispositivos`
+      : `✓ Enviada a ${res.recipients || "todos"} dispositivos`;
+
+    /* Guardar en historial */
+    try {
+      const snap = await getDoc(doc(db, "config", "notif_history"));
+      const items = snap.exists() ? (snap.data().items || []) : [];
+      items.push({
+        title,
+        msg,
+        sentAt: new Date().toLocaleString("es-MX", { dateStyle: "short", timeStyle: "short" }),
+        scheduled,
+      });
+      await setDoc(doc(db, "config", "notif_history"), { items: items.slice(-50) });
+    } catch {}
+  } else {
+    result.style.color = "var(--red)";
+    result.textContent = `✗ Error: ${res.error}`;
+  }
+}
+
+/* ── Sobreescribir requestNotification para usar OneSignal ── */
+async function requestNotification() {
+  if (isAdmin) return;
+  await subscribeToNotifications();
+}
