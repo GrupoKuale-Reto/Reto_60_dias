@@ -2020,7 +2020,7 @@ let swRegistration = null;
 async function registerSW() {
   if (!("serviceWorker" in navigator)) return;
   try {
-    swRegistration = await navigator.serviceWorker.register('OneSignalSDKWorker.js')
+    swRegistration = await navigator.serviceWorker.register('./OneSignalSDKWorker.js', { scope: './' })
     // Esperar a que el SW esté activo
     await navigator.serviceWorker.ready;
     // Enviar horarios al SW
