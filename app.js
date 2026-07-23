@@ -2543,8 +2543,7 @@ document.addEventListener("DOMContentLoaded", () => {
    App ID: 36858566-60a8-475a-a21e-732b348c717a
 ══════════════════════════════════════ */
 
-const OS_APP_ID  = "36858566-60a8-475a-a21e-732b348c717a";
-const OS_API_KEY = "os_v2_app_g2cykztavbdvviq6omvtjddrpi424xkfdveu3zupvureuih2gigsueobquf6udxdtcv7444nlvzdg35o5pz3ftda76jwzotj4zblwey";
+const OS_APP_ID  = "36858566-60a8-475a-a21e-732b348c717a"; // App ID (público, no es secreto)
 
 /* ── OneSignal init manejado por index.html ── */
 function initOneSignal() {
