@@ -542,12 +542,24 @@ async function requestNotification() {
   }
 }
 
-function updateNotifyBtn() {
+async function updateNotifyBtn() {
   const btn = document.getElementById("notify-btn");
   if (!btn) return;
-  const granted = "Notification" in window && Notification.permission === "granted";
-  btn.classList.toggle("notify-active", granted);
-  btn.title = granted ? "Notificaciones activadas" : "Activar notificaciones";
+
+  let active = false;
+  // Verificar suscripcion real de OneSignal si esta disponible
+  if (window.OneSignal && window.OneSignal.Notifications) {
+    try {
+      const optedIn = window.OneSignal.User?.PushSubscription?.optedIn;
+      active = window.OneSignal.Notifications.permission === true && !!optedIn;
+    } catch { active = false; }
+  } else {
+    // Fallback: permiso nativo del navegador
+    active = "Notification" in window && Notification.permission === "granted";
+  }
+
+  btn.classList.toggle("notify-active", active);
+  btn.title = active ? "Notificaciones activadas" : "Activar notificaciones";
 }
 
 /* ══════════════════════════════════════
@@ -2081,94 +2093,94 @@ function checkIOSInstall() {
 }
 
 /* ══════════════════════════════════════
-   FIREBASE AUTH STATE
+   FIREBASE AUTH STATE + INIT1
+   Envuelto en DOMContentLoaded para garantizar que el DOM
+   esté listo antes de que Firebase dispare onAuthStateChanged
 ══════════════════════════════════════ */
-onAuthStateChanged(auth, async (firebaseUser) => {
-  if (firebaseUser) {
-    // Usuario autenticado
-    currentUid   = firebaseUser.uid;
-    currentEmail = firebaseUser.email;
-    curUser      = firebaseUser.displayName || firebaseUser.email;
+document.addEventListener("DOMContentLoaded", () => {
 
-    // Detectar admin por correo (ajusta según tu proyecto)
-    const ADMIN_EMAIL = "admin@kuale.com"; 
-    isAdmin = (firebaseUser.email === ADMIN_EMAIL);
-
-    showLoading("Cargando...");
-    await launchMain();
-  } else {
-    // No hay sesión activa
-    currentUid = null; currentEmail = null; curUser = null; isAdmin = false;
-    uData = { data: {}, joinDate: "", password: "" };
-    hideLoading();
-    document.getElementById("auth-screen").style.display = "flex";
-    document.getElementById("main-screen").style.display = "none";
-  }
-});
-
-/* ══════════════════════════════════════
-   INIT1
-══════════════════════════════════════ */
-document.getElementById("login-btn").addEventListener("click", doLogin);
-document.getElementById("email").addEventListener("keydown", e => { if (e.key === "Enter") document.getElementById("password").focus(); });
-document.getElementById("password").addEventListener("keydown", e => { if (e.key === "Enter") doLogin(); });
-document.getElementById("logout-btn").addEventListener("click", doLogout);
-
-// iOS install banner close
-const iosBannerClose = document.getElementById("ios-banner-close");
-if (iosBannerClose) {
-  iosBannerClose.addEventListener("click", () => {
-    document.getElementById("ios-install-banner").style.display = "none";
-    localStorage.setItem("ios-banner-dismissed", "1");
+  /* ── Auth state ── */
+  onAuthStateChanged(auth, async (firebaseUser) => {
+    if (firebaseUser) {
+      currentUid   = firebaseUser.uid;
+      currentEmail = firebaseUser.email;
+      curUser      = firebaseUser.displayName || firebaseUser.email;
+      const ADMIN_EMAIL = "admin@kuale.com";
+      isAdmin = (firebaseUser.email === ADMIN_EMAIL);
+      showLoading("Cargando...");
+      await launchMain();
+    } else {
+      currentUid = null; currentEmail = null; curUser = null; isAdmin = false;
+      uData = { data: {}, joinDate: "", password: "" };
+      hideLoading();
+      document.getElementById("auth-screen").style.display = "flex";
+      document.getElementById("main-screen").style.display = "none";
+    }
   });
-}
 
-document.getElementById("toggle-register-btn").addEventListener("click", () => {
-  const s        = document.getElementById("register-section");
-  const loginBtn = document.getElementById("login-btn");
-  const visible  = s.style.display !== "none";
-  s.style.display        = visible ? "none"  : "block";
-  loginBtn.style.display = visible ? "block" : "none";
-  document.getElementById("toggle-register-btn").innerHTML = visible
-    ? '<i class="ti ti-user-plus"></i> ¿Primera vez? Regístrate'
-    : '<i class="ti ti-x"></i> Cancelar';
-});
-document.getElementById("register-btn").addEventListener("click", doRegister);
+  /* ── Eventos de login/registro ── */
+  document.getElementById("login-btn").addEventListener("click", doLogin);
+  document.getElementById("email").addEventListener("keydown", e => { if (e.key === "Enter") document.getElementById("password").focus(); });
+  document.getElementById("password").addEventListener("keydown", e => { if (e.key === "Enter") doLogin(); });
+  document.getElementById("logout-btn").addEventListener("click", doLogout);
 
-document.getElementById("close-modal").addEventListener("click", () => { document.getElementById("sum-modal").style.display = "none"; });
-document.getElementById("sum-modal").addEventListener("click", function(e) { if (e.target === this) this.style.display = "none"; });
+  // iOS install banner close
+  const iosBannerClose = document.getElementById("ios-banner-close");
+  if (iosBannerClose) {
+    iosBannerClose.addEventListener("click", () => {
+      document.getElementById("ios-install-banner").style.display = "none";
+      localStorage.setItem("ios-banner-dismissed", "1");
+    });
+  }
 
-document.getElementById("recover-btn").addEventListener("click", () => { document.getElementById("recover-modal").style.display = "flex"; });
-document.getElementById("close-recover").addEventListener("click", () => {
-  document.getElementById("recover-modal").style.display = "none";
-  document.getElementById("recover-err").textContent = "";
-  document.getElementById("recover-err").style.color = "";
-});
-document.getElementById("recover-modal").addEventListener("click", function(e) {
-  if (e.target === this) { this.style.display = "none"; document.getElementById("recover-err").textContent = ""; }
-});
-document.getElementById("do-recover").addEventListener("click", doRecover);
+  document.getElementById("toggle-register-btn").addEventListener("click", () => {
+    const s        = document.getElementById("register-section");
+    const loginBtn = document.getElementById("login-btn");
+    const visible  = s.style.display !== "none";
+    s.style.display        = visible ? "none"  : "block";
+    loginBtn.style.display = visible ? "block" : "none";
+    document.getElementById("toggle-register-btn").innerHTML = visible
+      ? '<i class="ti ti-user-plus"></i> ¿Primera vez? Regístrate'
+      : '<i class="ti ti-x"></i> Cancelar';
+  });
+  document.getElementById("register-btn").addEventListener("click", doRegister);
 
-document.getElementById("close-ud").addEventListener("click", () => { document.getElementById("user-detail-modal").style.display = "none"; });
-document.getElementById("user-detail-modal").addEventListener("click", function(e) { if (e.target === this) this.style.display = "none"; });
+  document.getElementById("close-modal").addEventListener("click", () => { document.getElementById("sum-modal").style.display = "none"; });
+  document.getElementById("sum-modal").addEventListener("click", function(e) { if (e.target === this) this.style.display = "none"; });
 
-document.getElementById("confirm-cancel").addEventListener("click", () => {
-  document.getElementById("confirm-modal").style.display = "none"; _pendingDeleteName = null;
-});
-document.getElementById("confirm-modal").addEventListener("click", function(e) {
-  if (e.target === this) { this.style.display = "none"; _pendingDeleteName = null; }
-});
-document.getElementById("confirm-ok").addEventListener("click", async () => {
-  if (!_pendingDeleteName) return;
-  showLoading("Eliminando usuario...");
-  try {
-    await deleteUserDoc(_pendingDeleteName);
-    _pendingDeleteName = null;
-    document.getElementById("confirm-modal").style.display = "none";
-    hideLoading();
-    renderAdmin();
-  } catch { hideLoading(); showToast("Error al eliminar usuario."); }
-});
+  document.getElementById("recover-btn").addEventListener("click", () => { document.getElementById("recover-modal").style.display = "flex"; });
+  document.getElementById("close-recover").addEventListener("click", () => {
+    document.getElementById("recover-modal").style.display = "none";
+    document.getElementById("recover-err").textContent = "";
+    document.getElementById("recover-err").style.color = "";
+  });
+  document.getElementById("recover-modal").addEventListener("click", function(e) {
+    if (e.target === this) { this.style.display = "none"; document.getElementById("recover-err").textContent = ""; }
+  });
+  document.getElementById("do-recover").addEventListener("click", doRecover);
+
+  document.getElementById("close-ud").addEventListener("click", () => { document.getElementById("user-detail-modal").style.display = "none"; });
+  document.getElementById("user-detail-modal").addEventListener("click", function(e) { if (e.target === this) this.style.display = "none"; });
+
+  document.getElementById("confirm-cancel").addEventListener("click", () => {
+    document.getElementById("confirm-modal").style.display = "none"; _pendingDeleteName = null;
+  });
+  document.getElementById("confirm-modal").addEventListener("click", function(e) {
+    if (e.target === this) { this.style.display = "none"; _pendingDeleteName = null; }
+  });
+  document.getElementById("confirm-ok").addEventListener("click", async () => {
+    if (!_pendingDeleteName) return;
+    showLoading("Eliminando usuario...");
+    try {
+      await deleteUserDoc(_pendingDeleteName);
+      _pendingDeleteName = null;
+      document.getElementById("confirm-modal").style.display = "none";
+      hideLoading();
+      renderAdmin();
+    } catch { hideLoading(); showToast("Error al eliminar usuario."); }
+  });
+
+}); // fin DOMContentLoaded
 /* ══════════════════════════════════════
    ASISTENTE IA — Chat flotante
    Groq (llama-3.3-70b) + Tavily search
