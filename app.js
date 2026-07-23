@@ -273,11 +273,14 @@ async function uploadToImgBB(file) {
    LOADING SCREEN
 ══════════════════════════════════════ */
 function showLoading(msg = "Cargando...") {
-  document.getElementById("loading-screen").style.display = "flex";
-  document.getElementById("loading-msg").textContent = msg;
+  const el = document.getElementById("loading-screen");
+  const ml = document.getElementById("loading-msg");
+  if (el) el.style.display = "flex";
+  if (ml) ml.textContent = msg;
 }
 function hideLoading() {
-  document.getElementById("loading-screen").style.display = "none";
+  const el = document.getElementById("loading-screen");
+  if (el) el.style.display = "none";
 }
 
 /* ══════════════════════════════════════
@@ -2493,22 +2496,27 @@ function initOneSignal() {
 
 /* ── Suscribir usuario a notificaciones (OneSignal v16) ── */
 async function subscribeToNotifications() {
-  window.OneSignalDeferred = window.OneSignalDeferred || [];
-  window.OneSignalDeferred.push(async function(OneSignal) {
-    try {
-      await OneSignal.Notifications.requestPermission();
-      if (OneSignal.Notifications.permission) {
-        await OneSignal.login(curUser);
-        showToast("✓ Notificaciones activadas");
+  try {
+    const doSubscribe = async (OS) => {
+      await OS.Notifications.requestPermission();
+      if (OS.Notifications.permission) {
+        await OS.login(curUser);
+        showToast("✓ Notificaciones activadas en este dispositivo");
         updateNotifyBtn();
       } else {
         showToast("Permiso denegado. Actívalo en ajustes del navegador.");
       }
-    } catch(e) {
-      console.error("OneSignal error:", e);
-      showToast("Error al activar notificaciones.");
+    };
+    if (window.OneSignal && window.OneSignal.Notifications) {
+      await doSubscribe(window.OneSignal);
+    } else {
+      window.OneSignalDeferred = window.OneSignalDeferred || [];
+      window.OneSignalDeferred.push(doSubscribe);
     }
-  });
+  } catch(e) {
+    console.error("OneSignal:", e);
+    showToast("Error al activar notificaciones.");
+  }
 }
 
 /* ── Enviar notificación masiva (solo admin) ── */
