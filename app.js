@@ -509,8 +509,7 @@ async function requestNotification() {
   if (window.OneSignal) {
     try {
       await OneSignal.Notifications.requestPermission();
-      const granted = await OneSignal.Notifications.permissionNative;
-      if (granted === "granted" || OneSignal.Notifications.permission) {
+      if (OneSignal.Notifications.permission) {
         await OneSignal.login(curUser);
         updateNotifyBtn();
         showToast("✓ Notificaciones activadas en este dispositivo");
@@ -2487,40 +2486,29 @@ document.addEventListener("DOMContentLoaded", () => {
 const OS_APP_ID  = "36858566-60a8-475a-a21e-732b348c717a";
 const OS_API_KEY = "os_v2_app_g2cykztavbdvviq6omvtjddrpkyem7pguoguzxn5xlpcyzpc2nnshpxgvvmaui6vipjol3eqobwongmjkjkstayl2pqm22vvv6otrja";
 
-/* ── Inicializar OneSignal ── */
-async function initOneSignal() {
-  if (!window.OneSignalDeferred) {
-    window.OneSignalDeferred = [];
-  }
-  window.OneSignalDeferred.push(async function(OneSignal) {
-    await OneSignal.init({
-      appId: OS_APP_ID,
-      notifyButton: { enable: false }, // usamos nuestro propio botón
-      allowLocalhostAsSecureOrigin: true,
-    });
-  });
+/* ── OneSignal init manejado por index.html ── */
+function initOneSignal() {
+  window.OneSignalDeferred = window.OneSignalDeferred || [];
 }
 
-/* ── Suscribir usuario a notificaciones ── */
+/* ── Suscribir usuario a notificaciones (OneSignal v16) ── */
 async function subscribeToNotifications() {
-  if (!window.OneSignal) {
-    showToast("Notificaciones no disponibles en este navegador.");
-    return;
-  }
-  try {
-    const permission = await OneSignal.Notification.requestPermission();
-    if (permission === "granted") {
-      // Guardar el external_id del usuario para poder segmentar
-      await OneSignal.login(curUser);
-      showToast("✓ Notificaciones activadas en este dispositivo");
-      updateNotifyBtn();
-    } else {
-      showToast("Permiso de notificaciones denegado.");
+  window.OneSignalDeferred = window.OneSignalDeferred || [];
+  window.OneSignalDeferred.push(async function(OneSignal) {
+    try {
+      await OneSignal.Notifications.requestPermission();
+      if (OneSignal.Notifications.permission) {
+        await OneSignal.login(curUser);
+        showToast("✓ Notificaciones activadas");
+        updateNotifyBtn();
+      } else {
+        showToast("Permiso denegado. Actívalo en ajustes del navegador.");
+      }
+    } catch(e) {
+      console.error("OneSignal error:", e);
+      showToast("Error al activar notificaciones.");
     }
-  } catch(e) {
-    console.error("OneSignal error:", e);
-    showToast("Error al activar notificaciones.");
-  }
+  });
 }
 
 /* ── Enviar notificación masiva (solo admin) ── */
