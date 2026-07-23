@@ -501,8 +501,31 @@ function scheduleMidnightSave() {
   }, next - now);
 }
 
-/* ── Web Notifications (legacy btn en tracker) ── */
+/* ── Web Notifications — usa OneSignal en móvil, fallback nativo en desktop ── */
 async function requestNotification() {
+  if (isAdmin) return;
+
+  /* Intentar OneSignal primero */
+  if (window.OneSignal) {
+    try {
+      await OneSignal.Notifications.requestPermission();
+      const granted = await OneSignal.Notifications.permissionNative;
+      if (granted === "granted" || OneSignal.Notifications.permission) {
+        await OneSignal.login(curUser);
+        updateNotifyBtn();
+        showToast("✓ Notificaciones activadas en este dispositivo");
+        return;
+      }
+    } catch(e) {
+      console.log("OneSignal fallback:", e);
+    }
+  }
+
+  /* Fallback: API nativa para desktop */
+  if (!("Notification" in window)) {
+    showToast("Para recibir notificaciones, instala la app: Menú → Agregar a pantalla de inicio");
+    return;
+  }
   const granted = await requestNotifPermission();
   if (granted) {
     sendScheduleToSW();
