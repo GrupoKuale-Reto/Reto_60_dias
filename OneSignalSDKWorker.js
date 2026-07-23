@@ -1,3 +1,5 @@
+importScripts("https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.sw.js");
+
 /* =============================================
    Reto 60 Días · Service Worker
    sw.js — Notificaciones en segundo plano
@@ -63,8 +65,8 @@ function showNotif(n) {
   const body  = n.mensaje || "¡No olvides registrar tus hábitos de hoy!";
   self.registration.showNotification(title, {
     body,
-    icon: "logo-icon-new.png",
-    badge: "logo-icon-new.png",
+    icon: "logo-icon.png",
+    badge: "logo-icon.png",
     vibrate: [200, 100, 200],
     tag: `reto60-${n.hora}`,
     renotify: true,
@@ -84,5 +86,3 @@ self.addEventListener("notificationclick", e => {
     })
   );
 });
-/* ── OneSignal Service Worker ── */
-importScripts("https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.sw.js");
