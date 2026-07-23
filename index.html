@@ -160,6 +160,9 @@
         await OneSignal.init({
           appId: "36858566-60a8-475a-a21e-732b348c717a",
           notifyButton: { enable: false },
+          // Worker en la raíz del dominio (grupokuale-reto.github.io/OneSignalSDKWorker.js)
+          serviceWorkerParam: { scope: "/" },
+          serviceWorkerPath: "/OneSignalSDKWorker.js",
         });
       } catch(e) {
         console.warn("OneSignal init omitido:", e.message || e);
