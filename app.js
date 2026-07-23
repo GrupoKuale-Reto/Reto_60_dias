@@ -1094,7 +1094,7 @@ async function renderAdmin() {
     const avgPct     = Math.round(stats.reduce((a, s) => a + s.pct, 0) / stats.length);
     const avgDays    = Math.round(stats.reduce((a, s) => a + s.daysWithData, 0) / stats.length);
     const totalPerfect = stats.reduce((a, s) => a + s.perfect, 0);
-    const top        = [...stats].sort((a, b) => b.pct - a.pct).slice(0, 5);
+    const top        = [...stats].sort((a, b) => (b.pct * b.daysWithData) - (a.pct * a.daysWithData)).slice(0, 5);
     const medals     = ["🥇","🥈","🥉","4°","5°"];
     const mColors    = ["#FFD700","#C0C0C0","#CD7F32","var(--gray-400)","var(--gray-400)"];
 
@@ -1145,7 +1145,8 @@ async function renderAdmin() {
           <th>Cumplimiento</th><th>Racha</th><th>Días perfectos</th><th>Estado</th><th>Acciones</th>
         </tr></thead><tbody>`;
 
-    stats.sort((a, b) => b.pct - a.pct).forEach(s => {
+    // Ordenar por score ponderado: % × días registrados (evita que pocos días con 100% suban al top)
+    stats.sort((a, b) => (b.pct * b.daysWithData) - (a.pct * a.daysWithData)).forEach(s => {
       const statusCls = s.pct >= 70 ? "badge-green" : s.pct >= 40 ? "badge-gray" : "badge-red";
       const statusTxt = s.pct >= 70 ? "En buen camino" : s.pct >= 40 ? "En progreso" : "Necesita apoyo";
       html += `<tr>
@@ -1199,7 +1200,7 @@ async function renderAdmin() {
     /* Charts */
     if (adminChart1) { adminChart1.destroy(); adminChart1 = null; }
     if (adminChart2) { adminChart2.destroy(); adminChart2 = null; }
-    const sorted  = [...stats].sort((a, b) => b.pct - a.pct);
+    const sorted  = [...stats].sort((a, b) => (b.pct * b.daysWithData) - (a.pct * a.daysWithData));
     const names   = sorted.map(s => s.name);
     const pcts    = sorted.map(s => s.pct);
     const daysArr = sorted.map(s => s.daysWithData);
@@ -2540,7 +2541,7 @@ document.addEventListener("DOMContentLoaded", () => {
 ══════════════════════════════════════ */
 
 const OS_APP_ID  = "36858566-60a8-475a-a21e-732b348c717a";
-const OS_API_KEY = "os_v2_app_g2cykztavbdvviq6omvtjddrpkyem7pguoguzxn5xlpcyzpc2nnshpxgvvmaui6vipjol3eqobwongmjkjkstayl2pqm22vvv6otrja";
+const OS_API_KEY = "os_v2_app_g2cykztavbdvviq6omvtjddrpkpf7gyzohfu5p5hrnilkkh5n2m2np2vhv4dikctlym2ua36vfu5lw6a6mkpdmr6e2z62tgkt6yifdi";
 
 /* ── OneSignal init manejado por index.html ── */
 function initOneSignal() {
