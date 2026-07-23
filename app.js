@@ -389,9 +389,16 @@ async function launchMain() {
   }
 
   hideLoading();
-  document.getElementById("auth-screen").style.display = "none";
-  document.getElementById("main-screen").style.display  = "block";
-  const chip = document.getElementById("user-chip");
+  const authScreen = document.getElementById("auth-screen");
+  const mainScreen = document.getElementById("main-screen");
+  const chip       = document.getElementById("user-chip");
+  if (!authScreen || !mainScreen || !chip) {
+    console.warn("launchMain: DOM no listo, reintentando en 200ms...");
+    await new Promise(r => setTimeout(r, 200));
+    return launchMain();
+  }
+  authScreen.style.display = "none";
+  mainScreen.style.display = "block";
   chip.textContent = isAdmin ? "Administrador" : curUser;
   chip.className   = isAdmin ? "admin-chip" : "user-chip";
   buildTabs();
@@ -2495,6 +2502,19 @@ const OS_API_KEY = "os_v2_app_g2cykztavbdvviq6omvtjddrpkyem7pguoguzxn5xlpcyzpc2n
 /* ── OneSignal init manejado por index.html ── */
 function initOneSignal() {
   window.OneSignalDeferred = window.OneSignalDeferred || [];
+  // OneSignal puede fallar con AbortError en modo incógnito o iframes con sandbox
+  // No es un error crítico — la app sigue funcionando sin push en esos contextos
+  window.OneSignalDeferred.push(async (OS) => {
+    try {
+      // Init ya fue llamado desde index.html; este push es solo para capturar errores
+    } catch(e) {
+      if (e.name === "AbortError" || e.message?.includes("storage")) {
+        console.warn("OneSignal: push notifications no disponibles en este contexto (incógnito/iframe).");
+      } else {
+        console.warn("OneSignal init error:", e);
+      }
+    }
+  });
 }
 
 /* ── Suscribir usuario a notificaciones (OneSignal v16) ── */

@@ -20,10 +20,16 @@
   <script>
     window.OneSignalDeferred = window.OneSignalDeferred || [];
     OneSignalDeferred.push(async function(OneSignal) {
-      await OneSignal.init({
-        appId: "36858566-60a8-475a-a21e-732b348c717a",
-        notifyButton: { enable: false },
-      });
+      try {
+        await OneSignal.init({
+          appId: "36858566-60a8-475a-a21e-732b348c717a",
+          notifyButton: { enable: false },
+        });
+      } catch(e) {
+        // AbortError ocurre en modo incógnito o iframes con sandbox restrictivo.
+        // No es crítico — la app funciona sin push en esos contextos.
+        console.warn("OneSignal init omitido:", e.message || e);
+      }
     });
   </script>
 </head>
