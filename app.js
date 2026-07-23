@@ -374,7 +374,7 @@ async function launchMain() {
   await loadHabits();
   await loadCards();
   await loadNotifSchedule();
-  registerSW();
+  // registerSW se llama DESPUÉS de renderizar para no bloquear el DOM en móvil
 
   if (!isAdmin) {
     await loadPhotos(currentUid);
@@ -389,13 +389,17 @@ async function launchMain() {
   }
 
   hideLoading();
-  // Esperar a que el DOM esté completamente pintado (workaround para módulos ES6 con Firebase)
-  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-  const authScreen = document.getElementById("auth-screen");
-  const mainScreen = document.getElementById("main-screen");
-  const chip       = document.getElementById("user-chip");
+  // Buscar elementos con reintentos — Firebase puede disparar antes de que el parser termine
+  let authScreen, mainScreen, chip;
+  for (let i = 0; i < 20; i++) {
+    authScreen = document.getElementById("auth-screen");
+    mainScreen = document.getElementById("main-screen");
+    chip       = document.getElementById("user-chip");
+    if (authScreen && mainScreen && chip) break;
+    await new Promise(r => setTimeout(r, 50));
+  }
   if (!authScreen || !mainScreen || !chip) {
-    console.error("launchMain: elementos del DOM no encontrados. Verifica los IDs en index.html.");
+    console.warn("launchMain: DOM no disponible tras 1s de espera.");
     return;
   }
   authScreen.style.display = "none";
@@ -404,9 +408,12 @@ async function launchMain() {
   chip.className   = isAdmin ? "admin-chip" : "user-chip";
   buildTabs();
   renderTab(isAdmin ? "admin" : "tracker");
+
+  // SW y OneSignal al final, en segundo plano, sin bloquear la UI
+  setTimeout(() => registerSW(), 0);
+
   if (!isAdmin) {
     scheduleMidnightSave();
-    /* Suscribir a OneSignal en segundo plano */
     setTimeout(() => subscribeToNotifications(), 3000);
   }
 }
@@ -2074,7 +2081,8 @@ async function registerSW() {
 
 function sendScheduleToSW() {
   if (!swRegistration || !swRegistration.active) return;
-  if (Notification.permission !== "granted") return;
+  // Notification no existe en iOS Safari/Chrome sin PWA instalada
+  if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
   swRegistration.active.postMessage({
     type: "SCHEDULE_NOTIFICATIONS",
     notificaciones: NOTIF_SCHEDULE
@@ -2087,13 +2095,13 @@ function cancelSWNotifications() {
 }
 
 async function requestNotifPermission() {
-  if (!("Notification" in window)) {
-    showToast("Tu navegador no soporta notificaciones.");
+  if (typeof Notification === "undefined" || !("Notification" in window)) {
+    showToast("Las notificaciones push requieren instalar la app: toca Compartir → Agregar a inicio");
     return false;
   }
   if (Notification.permission === "granted") return true;
   if (Notification.permission === "denied") {
-    showToast("Notificaciones bloqueadas. Actívalas en la configuración del navegador.");
+    showToast("Notificaciones bloqueadas. Actívalas en ajustes del navegador.");
     return false;
   }
   const perm = await Notification.requestPermission();
