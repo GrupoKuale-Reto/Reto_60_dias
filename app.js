@@ -2507,8 +2507,8 @@ async function sendPushNotification(title, message, scheduledTime = null) {
     headings: { es: title, en: title },
     contents: { es: message, en: message },
     included_segments: ["All"],
-    small_icon: "logo-icon-new",
-    large_icon: "logo-icon-new.png",
+    small_icon: "logo-icon.png",
+    large_icon: "logo-icon.png",
     url: window.location.href,
   };
 
@@ -2699,10 +2699,4 @@ async function doSendNotif(scheduled) {
     result.style.color = "var(--red)";
     result.textContent = `✗ Error: ${res.error}`;
   }
-}
-
-/* ── Sobreescribir requestNotification para usar OneSignal ── */
-async function requestNotification() {
-  if (isAdmin) return;
-  await subscribeToNotifications();
 }
