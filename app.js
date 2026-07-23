@@ -2602,18 +2602,18 @@ async function sendPushNotification(title, message, scheduledTime = null) {
     const [hh, mm] = scheduledTime.split(":").map(Number);
     const sendAt = new Date();
     sendAt.setHours(hh, mm, 0, 0);
+    // Si la hora ya pasó hoy, programar para mañana
     if (sendAt <= new Date()) sendAt.setDate(sendAt.getDate() + 1);
-    body.send_after = sendAt.toUTCString();
-    body.delayed_option = "timezone";
-    body.delivery_time_of_day = scheduledTime;
+    // send_after en formato ISO — OneSignal acepta ambos formatos
+    body.send_after = sendAt.toISOString();
   }
 
   try {
-    const res = await fetch("https://onesignal.com/api/v1/notifications", {
+    // Llamada via Cloudflare Worker para evitar CORS
+    const res = await fetch("https://reto-notif.randomgo70.workers.dev", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Key ${OS_API_KEY}`,
       },
       body: JSON.stringify(body),
     });
