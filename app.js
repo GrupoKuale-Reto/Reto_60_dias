@@ -513,7 +513,7 @@ async function requestNotification() {
     try {
       await OneSignal.Notifications.requestPermission();
       if (OneSignal.Notifications.permission) {
-        await OneSignal.login(curUser);
+        await OneSignal.login(currentUid); // UID único de Firebase, evita 409 Conflict
         updateNotifyBtn();
         showToast("✓ Notificaciones activadas en este dispositivo");
         return;
@@ -2020,16 +2020,19 @@ function openLightbox(url, habitName, day, date) {
 let swRegistration = null;
 
 async function registerSW() {
+  // OneSignal registra su propio Service Worker (OneSignalSDKWorker.js) automáticamente.
+  // No lo registramos manualmente para evitar conflictos de scope y errores 409.
+  checkIOSInstall();
+
+  // Obtener la referencia al SW de OneSignal cuando esté listo (para sendScheduleToSW)
   if (!("serviceWorker" in navigator)) return;
   try {
-    swRegistration = await navigator.serviceWorker.register('./OneSignalSDKWorker.js', { scope: './' })
-    // Esperar a que el SW esté activo
     await navigator.serviceWorker.ready;
-    // Enviar horarios al SW
+    swRegistration = navigator.serviceWorker.controller
+      ? { active: navigator.serviceWorker.controller }
+      : null;
     sendScheduleToSW();
-    // Mostrar banner iOS si aplica
-    checkIOSInstall();
-  } catch(e) { console.warn("SW registration failed:", e); }
+  } catch(e) { console.warn("SW ready error:", e); }
 }
 
 function sendScheduleToSW() {
@@ -2500,7 +2503,7 @@ async function subscribeToNotifications() {
     const doSubscribe = async (OS) => {
       await OS.Notifications.requestPermission();
       if (OS.Notifications.permission) {
-        await OS.login(curUser);
+        await OS.login(currentUid); // UID único de Firebase, evita 409 Conflict
         showToast("✓ Notificaciones activadas en este dispositivo");
         updateNotifyBtn();
       } else {
