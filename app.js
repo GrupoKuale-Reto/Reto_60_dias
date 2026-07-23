@@ -697,7 +697,10 @@ function renderNotificaciones() {
     await saveNotifSchedule();
     sendScheduleToSW();
 
-    /* También enviar via OneSignal a todos los dispositivos móviles */
+    /* Cancelar notificaciones programadas anteriores en OneSignal */
+    await cancelScheduledNotifications();
+
+    /* Enviar las nuevas via OneSignal */
     const activas = NOTIF_SCHEDULE.filter(n => n.activa);
     for (const n of activas) {
       await sendPushNotification(n.titulo, n.mensaje, n.hora);
@@ -2586,6 +2589,29 @@ async function subscribeToNotifications() {
   }
 }
 
+/* ── Cancelar todas las notificaciones programadas en OneSignal ── */
+async function cancelScheduledNotifications() {
+  try {
+    // Obtener IDs guardados de notificaciones programadas
+    const snap = await getDoc(doc(db, "config", "notif_scheduled_ids"));
+    if (!snap.exists()) return;
+    const ids = snap.data().ids || [];
+    // Cancelar cada una
+    for (const id of ids) {
+      try {
+        await fetch(`https://reto-notif.randomgo70.workers.dev/cancel/${id}`, {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+        });
+      } catch(e) { /* ignorar errores individuales */ }
+    }
+    // Limpiar IDs guardados
+    await setDoc(doc(db, "config", "notif_scheduled_ids"), { ids: [] });
+  } catch(e) {
+    console.warn("Error cancelando notificaciones previas:", e);
+  }
+}
+
 /* ── Enviar notificación masiva (solo admin) ── */
 async function sendPushNotification(title, message, scheduledTime = null) {
   const body = {
@@ -2620,6 +2646,13 @@ async function sendPushNotification(title, message, scheduledTime = null) {
     });
     const data = await res.json();
     if (data.id) {
+      // Guardar ID para poder cancelar después
+      try {
+        const snap = await getDoc(doc(db, "config", "notif_scheduled_ids"));
+        const ids = snap.exists() ? (snap.data().ids || []) : [];
+        ids.push(data.id);
+        await setDoc(doc(db, "config", "notif_scheduled_ids"), { ids });
+      } catch(e) { /* no crítico */ }
       return { ok: true, id: data.id, recipients: data.recipients };
     } else {
       return { ok: false, error: data.errors?.[0] || "Error desconocido" };
