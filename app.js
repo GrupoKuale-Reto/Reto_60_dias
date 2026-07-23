@@ -514,31 +514,50 @@ function scheduleMidnightSave() {
 async function requestNotification() {
   if (isAdmin) return;
 
+  const isMobile = /android|iphone|ipad|ipod/i.test(navigator.userAgent);
+
   /* Intentar OneSignal primero */
-  if (window.OneSignal) {
+  if (window.OneSignal && window.OneSignal.Notifications) {
     try {
       await OneSignal.Notifications.requestPermission();
       if (OneSignal.Notifications.permission) {
-        await OneSignal.login(currentUid); // UID único de Firebase, evita 409 Conflict
-        updateNotifyBtn();
+        await OneSignal.login(currentUid);
+        await updateNotifyBtn();
         showToast("✓ Notificaciones activadas en este dispositivo");
+        return;
+      } else {
+        showToast("Permiso denegado. Actívalo en ajustes del navegador.");
         return;
       }
     } catch(e) {
-      console.log("OneSignal fallback:", e);
+      console.warn("OneSignal no disponible, usando fallback:", e.message);
+      // Continúa al fallback nativo
     }
   }
 
-  /* Fallback: API nativa para desktop */
+  /* Fallback nativo — funciona en desktop y Chrome Android */
   if (!("Notification" in window)) {
-    showToast("Para recibir notificaciones, instala la app: Menú → Agregar a pantalla de inicio");
+    if (isMobile) {
+      // iOS Safari sin PWA instalada
+      showToast("Instala la app primero: Menú → Agregar a pantalla de inicio");
+    } else {
+      showToast("Tu navegador no soporta notificaciones.");
+    }
     return;
   }
-  const granted = await requestNotifPermission();
-  if (granted) {
+
+  if (Notification.permission === "denied") {
+    showToast("Notificaciones bloqueadas. Actívalas en ajustes del navegador.");
+    return;
+  }
+
+  const perm = await Notification.requestPermission();
+  if (perm === "granted") {
     sendScheduleToSW();
-    updateNotifyBtn();
+    await updateNotifyBtn();
     showToast("✓ Notificaciones activadas");
+  } else {
+    showToast("Permiso denegado.");
   }
 }
 
@@ -2038,19 +2057,17 @@ function openLightbox(url, habitName, day, date) {
 let swRegistration = null;
 
 async function registerSW() {
-  // OneSignal registra su propio Service Worker (OneSignalSDKWorker.js) automáticamente.
-  // No lo registramos manualmente para evitar conflictos de scope y errores 409.
   checkIOSInstall();
-
-  // Obtener la referencia al SW de OneSignal cuando esté listo (para sendScheduleToSW)
   if (!("serviceWorker" in navigator)) return;
   try {
+    // Worker en la raíz del dominio — grupokuale-reto.github.io/OneSignalSDKWorker.js
+    swRegistration = await navigator.serviceWorker.register(
+      "/OneSignalSDKWorker.js",
+      { scope: "/" }
+    );
     await navigator.serviceWorker.ready;
-    swRegistration = navigator.serviceWorker.controller
-      ? { active: navigator.serviceWorker.controller }
-      : null;
     sendScheduleToSW();
-  } catch(e) { console.warn("SW ready error:", e); }
+  } catch(e) { console.warn("SW registration error:", e); }
 }
 
 function sendScheduleToSW() {
@@ -2094,37 +2111,43 @@ function checkIOSInstall() {
 
 /* ══════════════════════════════════════
    FIREBASE AUTH STATE + INIT1
-   Envuelto en DOMContentLoaded para garantizar que el DOM
-   esté listo antes de que Firebase dispare onAuthStateChanged
 ══════════════════════════════════════ */
-document.addEventListener("DOMContentLoaded", () => {
 
-  /* ── Auth state ── */
-  onAuthStateChanged(auth, async (firebaseUser) => {
-    if (firebaseUser) {
-      currentUid   = firebaseUser.uid;
-      currentEmail = firebaseUser.email;
-      curUser      = firebaseUser.displayName || firebaseUser.email;
-      const ADMIN_EMAIL = "admin@kuale.com";
-      isAdmin = (firebaseUser.email === ADMIN_EMAIL);
-      showLoading("Cargando...");
-      await launchMain();
-    } else {
-      currentUid = null; currentEmail = null; curUser = null; isAdmin = false;
-      uData = { data: {}, joinDate: "", password: "" };
-      hideLoading();
-      document.getElementById("auth-screen").style.display = "flex";
-      document.getElementById("main-screen").style.display = "none";
-    }
+/* Helper: espera a que el DOM esté listo (funciona aunque el evento ya haya disparado) */
+function domReady() {
+  return new Promise(resolve => {
+    if (document.readyState !== "loading") resolve();
+    else document.addEventListener("DOMContentLoaded", resolve, { once: true });
   });
+}
 
-  /* ── Eventos de login/registro ── */
+/* ── Auth state ── */
+onAuthStateChanged(auth, async (firebaseUser) => {
+  await domReady(); // garantiza que el DOM existe antes de tocar elementos
+  if (firebaseUser) {
+    currentUid   = firebaseUser.uid;
+    currentEmail = firebaseUser.email;
+    curUser      = firebaseUser.displayName || firebaseUser.email;
+    const ADMIN_EMAIL = "admin@kuale.com";
+    isAdmin = (firebaseUser.email === ADMIN_EMAIL);
+    showLoading("Cargando...");
+    await launchMain();
+  } else {
+    currentUid = null; currentEmail = null; curUser = null; isAdmin = false;
+    uData = { data: {}, joinDate: "", password: "" };
+    hideLoading();
+    document.getElementById("auth-screen").style.display = "flex";
+    document.getElementById("main-screen").style.display = "none";
+  }
+});
+
+/* ── Eventos de login/registro (se registran cuando el DOM ya existe) ── */
+domReady().then(() => {
   document.getElementById("login-btn").addEventListener("click", doLogin);
   document.getElementById("email").addEventListener("keydown", e => { if (e.key === "Enter") document.getElementById("password").focus(); });
   document.getElementById("password").addEventListener("keydown", e => { if (e.key === "Enter") doLogin(); });
   document.getElementById("logout-btn").addEventListener("click", doLogout);
 
-  // iOS install banner close
   const iosBannerClose = document.getElementById("ios-banner-close");
   if (iosBannerClose) {
     iosBannerClose.addEventListener("click", () => {
@@ -2179,8 +2202,7 @@ document.addEventListener("DOMContentLoaded", () => {
       renderAdmin();
     } catch { hideLoading(); showToast("Error al eliminar usuario."); }
   });
-
-}); // fin DOMContentLoaded
+});
 /* ══════════════════════════════════════
    ASISTENTE IA — Chat flotante
    Groq (llama-3.3-70b) + Tavily search
