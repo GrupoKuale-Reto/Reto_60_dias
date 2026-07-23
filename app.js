@@ -389,6 +389,8 @@ async function launchMain() {
   }
 
   hideLoading();
+  // Esperar a que el DOM esté completamente pintado (workaround para módulos ES6 con Firebase)
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
   const authScreen = document.getElementById("auth-screen");
   const mainScreen = document.getElementById("main-screen");
   const chip       = document.getElementById("user-chip");
