@@ -393,9 +393,8 @@ async function launchMain() {
   const mainScreen = document.getElementById("main-screen");
   const chip       = document.getElementById("user-chip");
   if (!authScreen || !mainScreen || !chip) {
-    console.warn("launchMain: DOM no listo, reintentando en 200ms...");
-    await new Promise(r => setTimeout(r, 200));
-    return launchMain();
+    console.error("launchMain: elementos del DOM no encontrados. Verifica los IDs en index.html.");
+    return;
   }
   authScreen.style.display = "none";
   mainScreen.style.display = "block";
