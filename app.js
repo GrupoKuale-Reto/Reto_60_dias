@@ -1139,6 +1139,42 @@ async function renderAdmin() {
         <div style="position:relative;height:${chartH}px"><canvas id="chart-days"></canvas></div></div>
     </div>`;
 
+    /* Top hábitos */
+    const habitTotals = HABITS.map((h, hi) => {
+      let total = 0;
+      stats.forEach(s => {
+        const d = s.data || {};
+        for (let day = 0; day < DAYS; day++) {
+          if ((d[`${day}_${hi}`] || 0) === 1) total++;
+        }
+      });
+      return { icon: h.icon, name: h.name, total };
+    });
+    const maxHabit = Math.max(...habitTotals.map(h => h.total), 1);
+    const sortedHabits = [...habitTotals].sort((a, b) => b.total - a.total);
+
+    html += `<div class="top-section" style="margin-top:1.5rem">
+      <div class="chart-title" style="margin-bottom:12px">
+        <i class="ti ti-star" style="color:var(--green);margin-right:6px"></i>Top hábitos — cumplimientos totales (todos los usuarios)
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        ${sortedHabits.map((h, i) => {
+          const barW = Math.round((h.total / maxHabit) * 100);
+          const color = i === 0 ? "var(--green)" : i === sortedHabits.length - 1 ? "var(--red)" : "var(--gray-400)";
+          return `<div style="display:flex;align-items:center;gap:10px">
+            <span style="width:26px;text-align:center;font-size:16px">${h.icon}</span>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:12px;font-weight:500;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${h.name}</div>
+              <div style="height:8px;border-radius:4px;background:var(--gray-100);overflow:hidden">
+                <div style="height:100%;width:${barW}%;background:${color};border-radius:4px;transition:width .4s"></div>
+              </div>
+            </div>
+            <span style="font-size:13px;font-weight:600;color:${color};min-width:36px;text-align:right">${h.total}</span>
+          </div>`;
+        }).join("")}
+      </div>
+    </div>`;
+
     /* Table */
     html += `<div class="admin-table-section">
       <div class="chart-title">Detalle por usuario <span style="font-size:11px;font-weight:400;color:var(--gray-400)">— clic en nombre para ver progreso</span></div>
