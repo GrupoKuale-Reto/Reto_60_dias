@@ -1329,6 +1329,11 @@ function openUserDetail(s) {
   }
 
   document.getElementById("ud-content").innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:flex-end;margin-bottom:10px">
+      <button id="btn-grafica-usuario" style="display:flex;align-items:center;gap:6px;height:34px;padding:0 14px;border-radius:var(--radius-md);border:1.5px solid var(--green);background:var(--green-light);color:var(--green-dark);font-size:13px;font-weight:600;cursor:pointer">
+        <i class="ti ti-chart-bar"></i> Ver vista gráfica
+      </button>
+    </div>
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:1.25rem;flex-wrap:wrap">
       <div style="width:44px;height:44px;border-radius:50%;background:var(--green-light);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:600;color:var(--green-dark)">
         ${s.name.charAt(0).toUpperCase()}</div>
@@ -1383,7 +1388,197 @@ function openUserDetail(s) {
   document.querySelectorAll(".admin-photo").forEach(img => {
     img.addEventListener("click", () => openLightbox(img.dataset.url, img.dataset.habit, parseInt(img.dataset.day), img.dataset.date));
   });
+  document.getElementById("btn-grafica-usuario").addEventListener("click", () => openUserChart(s));
   document.getElementById("user-detail-modal").style.display = "flex";
+}
+
+/* ── Vista gráfica por usuario ── */
+function openUserChart(s) {
+  const existing = document.getElementById("user-chart-modal");
+  if (existing) existing.remove();
+
+  const d = s.data || {};
+
+  // Calcular stats por hábito
+  const habitStats = HABITS.map((h, hi) => {
+    let done = 0, fail = 0, empty = 0;
+    for (let day = 0; day < DAYS; day++) {
+      const sv = d[`${day}_${hi}`] || 0;
+      if (sv === 1) done++;
+      else if (sv === 2) fail++;
+      else empty++;
+    }
+    const marked = done + fail;
+    const pct = marked > 0 ? Math.round(done / marked * 100) : 0;
+    return { icon: h.icon, name: h.name, done, fail, empty, pct, marked };
+  });
+
+  const sorted = [...habitStats].sort((a, b) => b.pct - a.pct);
+  const best = sorted[0];
+  const worst = sorted[sorted.length - 1];
+
+  // Calcular tendencia semanal (cumplimiento % por semana)
+  const weeklyData = [];
+  for (let w = 0; w < TOTAL_WEEKS; w++) {
+    let wDone = 0, wTotal = 0;
+    for (let i = 0; i < WEEK_DAYS; i++) {
+      const day = w * WEEK_DAYS + i;
+      if (day >= DAYS) break;
+      HABITS.forEach((_, hi) => {
+        const sv = d[`${day}_${hi}`] || 0;
+        if (sv > 0) { wTotal++; if (sv === 1) wDone++; }
+      });
+    }
+    weeklyData.push(wTotal > 0 ? Math.round(wDone / wTotal * 100) : null);
+  }
+
+  // Calcular día de semana más productivo
+  const dayOfWeekDone = [0,0,0,0,0,0,0];
+  const dayOfWeekTotal = [0,0,0,0,0,0,0];
+  for (let day = 0; day < DAYS; day++) {
+    const dow = day % 7;
+    HABITS.forEach((_, hi) => {
+      const sv = d[`${day}_${hi}`] || 0;
+      if (sv > 0) { dayOfWeekTotal[dow]++; if (sv === 1) dayOfWeekDone[dow]++; }
+    });
+  }
+  const dowNames = ["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"];
+  const bestDow = dayOfWeekTotal.reduce((best, t, i) => {
+    if (t === 0) return best;
+    const pct = Math.round(dayOfWeekDone[i] / t * 100);
+    return pct > best.pct ? { pct, name: dowNames[i] } : best;
+  }, { pct: 0, name: "—" });
+
+  const maxDone = Math.max(...habitStats.map(h => h.done), 1);
+
+  // Generar barras por hábito
+  const habitBarsHtml = sorted.map((h, i) => {
+    const barW = Math.round((h.done / maxDone) * 100);
+    const failW = h.marked > 0 ? Math.round((h.fail / h.marked) * 100) : 0;
+    const colorMain = i === 0 ? "var(--green)" : i === sorted.length - 1 ? "var(--red)" : "var(--gray-400)";
+    const colorFail = "var(--red)";
+    return `
+      <div style="display:flex;align-items:flex-start;gap:8px;padding:8px 0;border-bottom:1px solid var(--gray-100)">
+        <span style="width:24px;text-align:center;font-size:15px;padding-top:2px">${h.icon}</span>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+            <span style="font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:55%">${h.name}</span>
+            <span style="font-size:12px;font-weight:700;color:${colorMain}">${h.pct}% <span style="font-weight:400;color:var(--gray-400);font-size:11px">(${h.done}/${h.marked} marcados)</span></span>
+          </div>
+          <div style="display:flex;gap:4px">
+            <div style="flex:1;height:8px;border-radius:4px;background:var(--gray-100);overflow:hidden">
+              <div style="height:100%;width:${barW}%;background:${colorMain};border-radius:4px;transition:width .4s"></div>
+            </div>
+          </div>
+          ${h.fail > 0 ? `<div style="font-size:10px;color:var(--red);margin-top:2px">✗ ${h.fail} incumplidos (${failW}%)</div>` : ""}
+        </div>
+      </div>`;
+  }).join("");
+
+  // Generar barras de tendencia semanal
+  const maxWeekPct = Math.max(...weeklyData.filter(v => v !== null), 1);
+  const weekBarHtml = weeklyData.map((pct, w) => {
+    if (pct === null) return `<div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:1">
+      <div style="height:80px;display:flex;align-items:flex-end"><div style="width:28px;height:4px;background:var(--gray-200);border-radius:2px"></div></div>
+      <span style="font-size:10px;color:var(--gray-400)">S${w+1}</span></div>`;
+    const h = Math.round((pct / 100) * 80);
+    const col = pct >= 70 ? "var(--green)" : pct >= 40 ? "var(--gray-400)" : "var(--red)";
+    return `<div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:1">
+      <span style="font-size:10px;font-weight:600;color:${col}">${pct}%</span>
+      <div style="height:80px;display:flex;align-items:flex-end"><div style="width:28px;height:${h}px;background:${col};border-radius:3px 3px 0 0"></div></div>
+      <span style="font-size:10px;color:var(--gray-600)">S${w+1}</span></div>`;
+  }).join("");
+
+  // Días de semana
+  const dowHtml = dowNames.map((name, i) => {
+    const t = dayOfWeekTotal[i];
+    const pct = t > 0 ? Math.round(dayOfWeekDone[i] / t * 100) : 0;
+    const h = t > 0 ? Math.round((pct / 100) * 60) : 2;
+    const col = t === 0 ? "var(--gray-200)" : pct >= 70 ? "var(--green)" : pct >= 40 ? "var(--gray-400)" : "var(--red)";
+    return `<div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex:1">
+      ${t > 0 ? `<span style="font-size:10px;font-weight:600;color:${col}">${pct}%</span>` : `<span style="font-size:10px;color:var(--gray-300)">—</span>`}
+      <div style="height:60px;display:flex;align-items:flex-end"><div style="width:22px;height:${Math.max(h,2)}px;background:${col};border-radius:3px 3px 0 0"></div></div>
+      <span style="font-size:10px;color:var(--gray-600)">${name}</span></div>`;
+  }).join("");
+
+  const modal = document.createElement("div");
+  modal.id = "user-chart-modal";
+  modal.className = "modal-bg";
+  modal.style.display = "flex";
+  modal.innerHTML = `
+    <div class="modal-box" style="max-width:620px;max-height:90vh;overflow-y:auto">
+      <div class="modal-hdr">
+        <h2 style="display:flex;align-items:center;gap:8px">
+          <i class="ti ti-chart-bar" style="color:var(--green)"></i>
+          Vista gráfica — ${s.name}
+        </h2>
+        <button id="close-user-chart"><i class="ti ti-x"></i></button>
+      </div>
+
+      <!-- Resumen rápido -->
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:1.25rem">
+        <div style="background:var(--green-light);border-radius:var(--radius-md);padding:12px;text-align:center">
+          <div style="font-size:22px;font-weight:700;color:var(--green-dark)">${s.pct}%</div>
+          <div style="font-size:11px;color:var(--gray-600)">Cumplimiento total</div>
+        </div>
+        <div style="background:#fff5f5;border-radius:var(--radius-md);padding:12px;text-align:center">
+          <div style="font-size:14px;font-weight:700;color:var(--green-dark);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${best.icon} ${best.name}</div>
+          <div style="font-size:11px;color:var(--gray-600)">Mejor hábito (${best.pct}%)</div>
+        </div>
+        <div style="background:#fff5f5;border-radius:var(--radius-md);padding:12px;text-align:center">
+          <div style="font-size:14px;font-weight:700;color:var(--red);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${worst.icon} ${worst.name}</div>
+          <div style="font-size:11px;color:var(--gray-600)">Hábito a mejorar (${worst.pct}%)</div>
+        </div>
+      </div>
+
+      <!-- Stats extra -->
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:1.5rem">
+        <div style="border:1px solid var(--gray-100);border-radius:var(--radius-md);padding:10px;text-align:center">
+          <div style="font-size:20px;font-weight:700;color:var(--gray-900)">${s.streak}d</div>
+          <div style="font-size:11px;color:var(--gray-400)">Racha actual</div>
+        </div>
+        <div style="border:1px solid var(--gray-100);border-radius:var(--radius-md);padding:10px;text-align:center">
+          <div style="font-size:20px;font-weight:700;color:var(--gray-900)">${s.perfect}</div>
+          <div style="font-size:11px;color:var(--gray-400)">Días perfectos</div>
+        </div>
+        <div style="border:1px solid var(--gray-100);border-radius:var(--radius-md);padding:10px;text-align:center">
+          <div style="font-size:20px;font-weight:700;color:var(--gray-900)">${bestDow.name}</div>
+          <div style="font-size:11px;color:var(--gray-400)">Mejor día de semana (${bestDow.pct}%)</div>
+        </div>
+      </div>
+
+      <!-- Top hábitos por usuario -->
+      <div style="margin-bottom:1.5rem">
+        <div style="font-size:13px;font-weight:600;margin-bottom:10px;display:flex;align-items:center;gap:6px">
+          <i class="ti ti-star" style="color:var(--green)"></i>Rendimiento por hábito
+        </div>
+        ${habitBarsHtml}
+      </div>
+
+      <!-- Tendencia semanal -->
+      <div style="margin-bottom:1.5rem">
+        <div style="font-size:13px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:6px">
+          <i class="ti ti-trending-up" style="color:var(--green)"></i>Tendencia semanal
+        </div>
+        <div style="display:flex;align-items:flex-end;gap:6px;padding:4px 0">
+          ${weekBarHtml}
+        </div>
+      </div>
+
+      <!-- Mejor día de la semana -->
+      <div style="margin-bottom:1rem">
+        <div style="font-size:13px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:6px">
+          <i class="ti ti-calendar-week" style="color:var(--green)"></i>Cumplimiento por día de la semana
+        </div>
+        <div style="display:flex;align-items:flex-end;gap:4px;padding:4px 0">
+          ${dowHtml}
+        </div>
+      </div>
+    </div>`;
+
+  document.body.appendChild(modal);
+  document.getElementById("close-user-chart").addEventListener("click", () => modal.remove());
+  modal.addEventListener("click", e => { if (e.target === modal) modal.remove(); });
 }
 
 /* ── Delete user ── */
